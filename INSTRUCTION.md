@@ -122,7 +122,7 @@ ninjabot/
 | `service/service.go` | Core interfaces (`Exchange`, `Broker`, `Feeder`, etc.) |
 | `exchange/binance.go` | Production exchange adapter |
 | `exchange/paperwallet.go` | Simulated exchange for paper trading & backtesting |
-| `examples/webbacktest/main.go` | Web UI for running backtests interactively via browser |
+| `cmd/main.go` | Web UI for running backtests interactively via browser |
 | `plot/chart.go` | Chart server; `Register()`, `Reset()`, `SetStrategy()`, `SetPaperWallet()` |
 
 ---
@@ -312,7 +312,7 @@ make run-backtest
 Openss a browser-based form to configure pairs, timeframe, and strategy parameters. Downloads live data from the Binance public API, runs the simulation, then redirects to the enhanced analytics chart:
 
 ```bash
-make run-webbacktest
+make dev
 # opens → http://localhost:8080
 ```
 
@@ -357,7 +357,7 @@ make run-futures API_KEY=... API_SECRET=...
 
 ## Web Backtest UI
 
-`examples/webbacktest/` is a self-contained HTTP server that exposes a browser form, runs a full backtest in-process, and serves results on the enhanced chart — no terminal interaction required after startup.
+`cmd/main.go` is a self-contained HTTP server that exposes a browser form, runs a full backtest in-process, and serves results on the enhanced chart — no terminal interaction required after startup.
 
 ### How to run
 

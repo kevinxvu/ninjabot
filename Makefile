@@ -1,4 +1,4 @@
-.PHONY: help build install clean fmt vet tidy check generate lint test \
+.PHONY: help dev build install clean fmt vet tidy check generate lint test \
         run-backtest run-webbacktest run-paper run-spot run-futures download release
 
 # Default target
@@ -9,6 +9,7 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Dev:"
+	@echo "  dev            Run the main entry point (web backtest UI)"
 	@echo "  build          Build the ninjabot CLI binary to ./bin/ninjabot"
 	@echo "  install        Install the ninjabot CLI to GOPATH/bin"
 	@echo "  clean          Remove build artifacts"
@@ -39,13 +40,17 @@ help:
 
 ## ── Build ────────────────────────────────────────────────────────────────────
 
+## dev: Run the main entry point
+dev:
+	go run ./cmd
+
 ## build: Compile the ninjabot CLI binary into ./bin/ninjabot
 build:
-	go build -o bin/ninjabot ./cmd/ninjabot
+	go build -o bin/ninjabot ./cmd/main.go
 
 ## install: Install the ninjabot CLI tool to $(GOPATH)/bin
 install:
-	go install ./cmd/ninjabot
+	go install ./cmd/main.go
 
 ## clean: Remove compiled binaries and build artifacts
 clean:
@@ -91,7 +96,7 @@ run-backtest:
 ## run-webbacktest: Start the web backtest UI (http://localhost:8080)
 ## Downloads data from Binance public API — no credentials needed.
 run-webbacktest:
-	go run examples/webbacktest/main.go
+	go run ./cmd
 
 ## run-paper: Run the paper wallet example (live feed, simulated orders)
 ## Required env vars: API_KEY, API_SECRET

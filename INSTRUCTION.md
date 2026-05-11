@@ -75,14 +75,16 @@ go version
 ```
 ninjabot/
 ├── cmd/
-│   └── ninjabot/          # CLI entry point — download historical OHLCV data to CSV
+│   ├── main.go            # CLI and Web UI entry point
+│   ├── server.go          # HTTP server for Web UI backtesting
+│   ├── summary.go         # Summary and KPIs calculation for backtesting
+│   └── types.go           # HTTP request/response types
 ├── download/              # Downloader logic used by the CLI
 ├── examples/
 │   ├── backtesting/       # Example: run strategy on historical CSV data
 │   ├── futuremarket/      # Example: deploy bot on Binance Futures
 │   ├── paperwallet/       # Example: live simulation (no real money)
 │   ├── spotmarket/        # Example: deploy bot on Binance Spot
-│   ├── webbacktest/       # Example: web UI to configure and run backtests via browser
 │   └── strategies/        # Reusable example strategies (CrossEMA, Turtle, etc.)
 ├── exchange/
 │   ├── binance.go         # Binance spot adapter
@@ -122,7 +124,7 @@ ninjabot/
 | `service/service.go` | Core interfaces (`Exchange`, `Broker`, `Feeder`, etc.) |
 | `exchange/binance.go` | Production exchange adapter |
 | `exchange/paperwallet.go` | Simulated exchange for paper trading & backtesting |
-| `cmd/main.go` | Web UI for running backtests interactively via browser |
+| `cmd/main.go` | CLI entry point and Web UI for running backtests interactively via browser |
 | `plot/chart.go` | Chart server; `Register()`, `Reset()`, `SetStrategy()`, `SetPaperWallet()` |
 
 ---
@@ -167,17 +169,24 @@ All tests should pass before you start making changes.
 
 ### Step 5 — (Optional) Install the CLI tool
 
-The `ninjabot` CLI is used to download historical candlestick data for backtesting:
+The `ninjabot` CLI is used to download historical candlestick data for backtesting or start the web UI:
 
 ```bash
-go install github.com/rodrigo-brito/ninjabot/cmd/ninjabot@latest
+go install github.com/rodrigo-brito/ninjabot/cmd@latest
 ```
 
-**Example usage:**
+**Example usage (Download data):**
 
 ```bash
 # Download last 30 days of BTC/USDT daily candles to btc.csv
 ninjabot download --pair BTCUSDT --timeframe 1d --days 30 --output ./btc.csv
+```
+
+**Example usage (Web UI):**
+
+```bash
+# Start the web UI server on port 8080
+ninjabot web --port 8080
 ```
 
 ---
@@ -309,10 +318,10 @@ make run-backtest
 
 ### Web Backtest UI (no credentials needed)
 
-Openss a browser-based form to configure pairs, timeframe, and strategy parameters. Downloads live data from the Binance public API, runs the simulation, then redirects to the enhanced analytics chart:
+Opens a browser-based form to configure pairs, timeframe, and strategy parameters. Downloads live data from the Binance public API, runs the simulation, then redirects to the enhanced analytics chart:
 
 ```bash
-make dev
+make run-webbacktest
 # opens → http://localhost:8080
 ```
 

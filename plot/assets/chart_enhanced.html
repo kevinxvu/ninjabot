@@ -526,7 +526,7 @@
 <body>
     <header class="header">
         <div class="header-content">
-            <div class="logo">NinjaBot Analytics</div>
+            <div class="logo"><a href="/" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:0.5rem;">NinjaBot Analytics</a></div>
             <nav class="pair-selector" id="pair-selector">
                 {{range $val := .pairs}}
                 <a class="pair-btn {{if eq $.pair $val}}active{{end}}" href="/enhanced?pair={{ $val }}">{{ $val }}</a>

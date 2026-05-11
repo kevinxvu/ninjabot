@@ -233,14 +233,19 @@ func (c *Chart) indicatorsByPair(pair string) []plotIndicator {
 
 func (c *Chart) candlesByPair(pair string) []Candle {
 	candles := make([]Candle, len(c.candles[pair]))
+	orderSet := c.ordersIDsByPair[pair]
+	if orderSet == nil {
+		return candles
+	}
+
 	orderCheck := make(map[int64]bool)
-	for id := range c.ordersIDsByPair[pair].Iter() {
+	for id := range orderSet.Iter() {
 		orderCheck[id] = true
 	}
 
 	for i := range c.candles[pair] {
 		candles[i] = c.candles[pair][i]
-		for id := range c.ordersIDsByPair[pair].Iter() {
+		for id := range orderSet.Iter() {
 			order := c.orderByID[id]
 
 			if i < len(c.candles[pair])-1 &&
@@ -266,6 +271,9 @@ func (c *Chart) candlesByPair(pair string) []Candle {
 
 func (c *Chart) shapesByPair(pair string) []Shape {
 	shapes := make([]Shape, 0)
+	if c.ordersIDsByPair[pair] == nil {
+		return shapes
+	}
 	for id := range c.ordersIDsByPair[pair].Iter() {
 		order := c.orderByID[id]
 
@@ -294,6 +302,9 @@ func (c *Chart) shapesByPair(pair string) []Shape {
 
 func (c *Chart) orderStringByPair(pair string) [][]string {
 	orders := make([][]string, 0)
+	if c.ordersIDsByPair[pair] == nil {
+		return orders
+	}
 	for id := range c.ordersIDsByPair[pair].Iter() {
 		o := c.orderByID[id]
 		var profit string
@@ -441,18 +452,46 @@ func (c *Chart) handleTradingHistoryData(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (c *Chart) Start() error {
-	http.Handle(
-		"/assets/",
-		http.FileServer(http.FS(staticFiles)),
-	)
+// Reset clears all accumulated candle, order and dataframe data so the chart
+// can be reused for a new backtest run without restarting the server.
+func (c *Chart) Reset() {
+	c.Lock()
+	defer c.Unlock()
+	c.candles = make(map[string][]Candle)
+	c.dataframe = make(map[string]*model.Dataframe)
+	c.ordersIDsByPair = make(map[string]*set.LinkedHashSetINT64)
+	c.orderByID = make(map[int64]model.Order)
+	c.strategy = nil
+	c.paperWallet = nil
+	c.lastUpdate = time.Time{}
+}
 
-	http.HandleFunc("/assets/chart.js", func(w http.ResponseWriter, _ *http.Request) {
+// SetStrategy updates the strategy used to compute chart indicators.
+func (c *Chart) SetStrategy(s strategy.Strategy) {
+	c.Lock()
+	defer c.Unlock()
+	c.strategy = s
+}
+
+// SetPaperWallet updates the paper wallet used for equity and drawdown data.
+func (c *Chart) SetPaperWallet(w *exchange.PaperWallet) {
+	c.Lock()
+	defer c.Unlock()
+	c.paperWallet = w
+}
+
+// Register registers all chart HTTP routes on mux, excluding the root path "/".
+// The caller is responsible for registering "/" if needed. The classic chart
+// view is available at "/chart".
+func (c *Chart) Register(mux *http.ServeMux) {
+	mux.Handle("/assets/", http.FileServer(http.FS(staticFiles)))
+
+	mux.HandleFunc("/assets/chart.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-type", "application/javascript")
 		fmt.Fprint(w, c.scriptContent)
 	})
 
-	http.HandleFunc("/assets/chart_enhanced.js", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/assets/chart_enhanced.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-type", "application/javascript")
 		content, err := staticFiles.ReadFile("assets/chart_enhanced.js")
 		if err != nil {
@@ -462,11 +501,17 @@ func (c *Chart) Start() error {
 		fmt.Fprint(w, string(content))
 	})
 
-	http.HandleFunc("/health", c.handleHealth)
-	http.HandleFunc("/history", c.handleTradingHistoryData)
-	http.HandleFunc("/data", c.handleData)
-	http.HandleFunc("/enhanced", c.handleEnhancedIndex)
-	http.HandleFunc("/", c.handleIndex)
+	mux.HandleFunc("/health", c.handleHealth)
+	mux.HandleFunc("/history", c.handleTradingHistoryData)
+	mux.HandleFunc("/data", c.handleData)
+	mux.HandleFunc("/enhanced", c.handleEnhancedIndex)
+	mux.HandleFunc("/chart", c.handleIndex)
+}
+
+func (c *Chart) Start() error {
+	mux := http.DefaultServeMux
+	c.Register(mux)
+	mux.HandleFunc("/", c.handleIndex)
 
 	fmt.Printf("Chart available at http://localhost:%d\n", c.port)
 	fmt.Printf("Enhanced chart available at http://localhost:%d/enhanced\n", c.port)

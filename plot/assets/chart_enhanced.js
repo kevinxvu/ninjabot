@@ -9,7 +9,7 @@ const STATUS_FILLED = "FILLED";
 
 let globalData = null;
 let showIndicators = true;
-let showVolume = false;
+let showVolume = true;
 
 function unpack(rows, key) {
   return rows.map((row) => row[key]);
@@ -187,6 +187,25 @@ function renderMainChart(data) {
     yaxis: "y",
   };
 
+  const volumeData = {
+    name: "Volume",
+    x: unpack(data.candles, "time"),
+    y: unpack(data.candles, "volume"),
+    type: "bar",
+    yaxis: "y2",
+    marker: {
+      color: data.candles.map((candle) =>
+        candle.close >= candle.open
+          ? "rgba(16, 185, 129, 0.5)" // green
+          : "rgba(239, 68, 68, 0.5)"  // red
+      ),
+      line: {
+        width: 0,
+      },
+    },
+  };
+
+
   const points = [];
   const annotations = [];
   data.candles.forEach((candle) => {
@@ -275,7 +294,11 @@ function renderMainChart(data) {
     layer: "below",
   }));
 
-  const plotData = [candleStickData, buyData, sellData];
+  let plotData = [candleStickData, buyData, sellData];
+
+  if (showVolume) {
+    plotData.push(volumeData);
+  }
 
   // Add indicators if enabled
   if (showIndicators && data.indicators) {
@@ -326,7 +349,15 @@ function renderMainChart(data) {
       gridcolor: "#2a2f4a",
       showline: true,
       linecolor: "#2a2f4a",
+      side: "left",
+      domain: [0.2, 1],
+      tickformat: ",.8~f",
+    },
+    yaxis2: {
+      showgrid: false,
       side: "right",
+      domain: [0, 0.15],
+      showticklabels: false,
     },
     hovermode: "x unified",
     annotations: annotations,
@@ -394,6 +425,8 @@ function renderEquityChart(data) {
       gridcolor: "#2a2f4a",
       showline: true,
       linecolor: "#2a2f4a",
+      side: "left",
+      tickformat: ",.8~f",
     },
     yaxis2: {
       title: `Position (${data.asset})`,
@@ -484,6 +517,8 @@ function renderPerformanceChart(data) {
       gridcolor: "#2a2f4a",
       showline: true,
       linecolor: "#2a2f4a",
+      side: "left",
+      tickformat: ",.8~f",
     },
     yaxis2: {
       title: "Trade Profit (%)",
@@ -549,7 +584,18 @@ function toggleIndicators() {
 
 function toggleVolume() {
   showVolume = !showVolume;
-  // Implement volume toggle if needed
+  if (globalData) {
+    renderMainChart(globalData);
+  }
+  
+  const volumeBtn = document.querySelector('button[onclick="toggleVolume()"]');
+  if (volumeBtn) {
+    if (showVolume) {
+      volumeBtn.classList.add("active");
+    } else {
+      volumeBtn.classList.remove("active");
+    }
+  }
 }
 
 function resetZoom() {

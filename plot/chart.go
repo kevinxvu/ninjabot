@@ -459,9 +459,9 @@ func (c *Chart) SetPaperWallet(w *exchange.PaperWallet) {
 // view is available at "/chart".
 func (c *Chart) Register(mux *http.ServeMux) {
 	mux.Handle("/assets/", http.FileServer(http.FS(ui.Files)))
-	mux.HandleFunc("/assets/chart_enhanced.js", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/assets/chart.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-type", "application/javascript")
-		content, err := ui.Files.ReadFile("assets/chart_enhanced.js")
+		content, err := ui.Files.ReadFile("assets/chart.js")
 		if err != nil {
 			http.Error(w, "File not found", http.StatusNotFound)
 			return
@@ -535,7 +535,7 @@ func NewChart(options ...Option) (*Chart, error) {
 	}
 
 	var err error
-	chart.indexHTML, err = template.ParseFS(ui.Files, "template/chart_enhanced.html")
+	chart.indexHTML, err = template.ParseFS(ui.Files, "template/chart.html")
 	if err != nil {
 		return nil, err
 	}

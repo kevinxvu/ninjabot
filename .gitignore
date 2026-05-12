@@ -21,3 +21,5 @@
 .idea
 *ninjabot
 .claude/*
+.vscode
+*__debug_*

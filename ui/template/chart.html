@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>NinjaBot - Advanced Trading Analytics</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/chart.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo"><a href="/" style="text-decoration:none; color:inherit; display:flex; align-items:center; gap:0.5rem;">NinjaBot Analytics</a></div>
+            <nav class="pair-selector" id="pair-selector">
+                {{range $val := .pairs}}
+                <a class="pair-btn {{if eq $.pair $val}}active{{end}}" href="/enhanced?pair={{ $val }}">{{ $val }}</a>
+                {{end}}
+            </nav>
+            <div style="display: flex; gap: 0.5rem;">
+                <a class="history-btn" href="/history?pair={{ $.pair }}">📊 History</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <span>Loading trading data...</span>
+        </div>
+
+        <div id="content" style="display: none;">
+            <!-- Stats Grid -->
+            <div class="stats-grid" id="stats-grid"></div>
+
+            <!-- Main Price Chart -->
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2 class="chart-title">Price Action & Orders</h2>
+                    <div class="chart-controls">
+                        <button class="control-btn active" onclick="toggleIndicators()">Indicators</button>
+                        <button class="control-btn active" onclick="toggleVolume()">Volume</button>
+                        <button class="control-btn" id="btn-sub-indicators" onclick="toggleSubIndicators()">Sub-Indicators</button>
+                        <button class="control-btn" onclick="resetZoom()">Reset Zoom</button>
+                    </div>
+                </div>
+                <div id="main-chart"></div>
+            </div>
+
+            <!-- Equity Chart -->
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2 class="chart-title">Portfolio Equity & Position</h2>
+                </div>
+                <div id="equity-chart"></div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h2 class="chart-title">Performance Analysis</h2>
+                </div>
+                <div id="performance-chart"></div>
+            </div>
+
+            <!-- Trade History Table -->
+            <div class="trade-table-container">
+                <h2 class="chart-title" style="margin-bottom: 1rem;">Recent Trades</h2>
+                <table class="trade-table" id="trade-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Side</th>
+                            <th>Type</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Value</th>
+                            <th>Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trade-table-body"></tbody>
+                </table>
+            </div>
+
+            <!-- Backtest Summary (populated by /api/summary if available) -->
+            <div id="backtest-summary" style="display:none"></div>
+        </div>
+    </div>
+
+    <script defer src="/assets/chart.js"></script>
+    <script defer src="/assets/chart_summary.js"></script>
+</body>
+</html>

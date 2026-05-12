@@ -11,8 +11,6 @@ import (
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 func parsePairs(raw string) []string {
 	parts := strings.Split(raw, ",")
 	result := make([]string, 0, len(parts))
@@ -31,8 +29,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 		log.Errorf("write json response: %v", err)
 	}
 }
-
-// ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
 	mux := http.NewServeMux()

@@ -99,7 +99,7 @@ ninjabot/
 ├── plot/
 │   ├── chart.go           # Chart builder; Reset/SetStrategy/SetPaperWallet/Register for reuse
 │   ├── indicator/         # Plot-specific indicator renderers (RSI, MACD, Bollinger, etc.)
-│   └── assets/            # Bundled HTML/JS chart templates (chart_enhanced.html + summary panel)
+│   └── assets/            # Bundled HTML/JS chart templates (chart.html + summary panel)
 ├── service/               # Core interfaces (Exchange, Broker, Notifier, Feeder, Telegram)
 ├── storage/               # Storage backends (BuntDB, SQL/SQLite)
 ├── strategy/              # Strategy interface definition and controller

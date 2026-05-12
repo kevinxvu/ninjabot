@@ -46,7 +46,7 @@ dev:
 
 ## build: Compile the ninjabot CLI binary into ./bin/ninjabot
 build:
-	go build -o bin/ninjabot ./cmd/main.go
+	go build -o bin/ninjabot ./cmd
 
 ## install: Install the ninjabot CLI tool to $(GOPATH)/bin
 install:

@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/examples/strategies"
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/exchange"
 )
 

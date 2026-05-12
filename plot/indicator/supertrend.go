@@ -10,7 +10,7 @@ import (
 	"github.com/markcheno/go-talib"
 )
 
-func Spertrend(period int, factor float64, color string) plot.Indicator {
+func Supertrend(period int, factor float64, color string) plot.Indicator {
 	return &supertrend{
 		Period: period,
 		Factor: factor,

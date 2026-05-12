@@ -34,7 +34,12 @@ func main() {
 	mux := http.NewServeMux()
 
 	chart, err := plot.NewChart(
-		plot.WithCustomIndicators(plotindicator.RSI(14, "#8b5cf6")),
+		plot.WithCustomIndicators(
+			plotindicator.RSI(14, "#8b5cf6"),
+			plotindicator.MACD(12, 26, 9, "#10b981", "#ef4444", "#3b82f6"),
+			plotindicator.Stoch(14, 3, 3, "#14b8a6", "#8b5cf6"),
+			plotindicator.CCI(20, "#ec4899"),
+		),
 	)
 	if err != nil {
 		log.Fatal(err)

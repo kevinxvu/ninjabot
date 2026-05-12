@@ -234,7 +234,10 @@ body {
 
 #main-chart, #equity-chart, #performance-chart {
     width: 100%;
-    height: 600px;
+}
+
+#main-chart {
+    min-height: 600px;
 }
 
 #equity-chart {

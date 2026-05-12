@@ -1,6 +1,6 @@
 # Ninjabot — Developer Onboarding Guide
 
-> A fast cryptocurrency trading bot **framework** written in Go. Ninjabot lets you build, backtest, and deploy custom trading strategies for Binance spot and futures markets.
+> A fast cryptocurrency trading bot **framework** written in Go. The Ninjabot framework lets you build, backtest, and deploy custom trading strategies for Binance spot and futures markets.
 
 ---
 
@@ -31,7 +31,7 @@
 - A **PaperWallet** for live simulation without real money
 - A **Backtesting engine** that replays historical candlestick data through your strategy
 - A **Chart/plot** system to visualize indicators and trade results
-- A **Web App** (`ninjabot`) providing a UI to configure and run backtests interactively.
+- A **Web App** (`ninjabot`) providing a UI (TradingBot) to configure and run backtests interactively.
 
 ---
 
@@ -97,11 +97,11 @@ ninjabot/
 ├── order/                 # Order controller and order feed/pub-sub
 ├── plot/
 │   ├── chart.go           # Chart builder; Reset/SetStrategy/SetPaperWallet/Register for reuse
-│   └── indicator/         # Plot-specific indicator renderers (RSI, MACD, Bollinger, etc.)
+│   └── indicator/         # Plot-specific indicator renderers (RSI, MACD, Stochastic, CCI, Bollinger, etc.)
 ├── service/               # Core interfaces (Exchange, Broker, Notifier, Feeder, Telegram)
 ├── storage/               # Storage backends (BuntDB, SQL/SQLite)
 ├── strategy/              # Strategy interface definition and controller
-│   └── strategies/        # Reusable example strategies (CrossEMA, Turtle, etc.)
+│   └── strategies/        # Reusable example strategies (CrossEMA, DCA, Turtle, etc.)
 ├── testdata/              # Sample CSV files for tests and backtesting examples
 ├── tools/
 │   ├── log/               # Logger setup (logrus wrapper)
@@ -385,7 +385,7 @@ After a backtest completes, `GET /api/summary` returns a JSON payload that the c
 
 | Section | Contents |
 |---|---|
-| **KPI cards** | Initial capital, final portfolio, gross profit, win rate, payoff, profit factor, SQN, max drawdown, volume |
+| **KPI cards** | Initial capital, final portfolio, gross profit, win rate, payoff, profit factor, SQN, max drawdown, volume. Also, the main chart explicitly labels metrics as Portfolio Return, Portfolio Max Drawdown, and Portfolio Sharpe Ratio to clarify these reflect the total wallet state across all pairs. |
 | **Per-pair table** | Trades, Win/Loss, % Win, Payoff, Profit Factor, SQN, Profit, Volume for each pair + totals row |
 | **Confidence Intervals (95%)** | Bootstrap-computed Return, Payoff, Profit Factor intervals per pair |
 | **Return Distribution** | 15-bucket histogram of all trade returns (color-coded: red = loss, green = profit) |

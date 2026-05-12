@@ -11,6 +11,45 @@ let globalData = null;
 let showIndicators = true;
 let showVolume = true;
 let showSubIndicators = false;
+let activeSubIndicators = new Set();
+let subIndicatorsInitialized = false;
+
+function renderSubIndicatorToggles(indicators) {
+  const container = document.getElementById("sub-indicator-toggles");
+  if (!container) return;
+
+  if (!showSubIndicators || indicators.length === 0) {
+    container.style.display = "none";
+    return;
+  }
+
+  container.style.display = "flex";
+  container.innerHTML = "";
+
+  indicators.forEach(ind => {
+    const btn = document.createElement("button");
+    btn.className = "control-btn";
+    // Smaller font/padding for these sub-toggles
+    btn.style.fontSize = "0.75rem";
+    btn.style.padding = "0.25rem 0.5rem";
+
+    if (activeSubIndicators.has(ind.name)) {
+      btn.classList.add("active");
+    }
+    btn.innerText = ind.name;
+    btn.onclick = () => {
+      if (activeSubIndicators.has(ind.name)) {
+        activeSubIndicators.delete(ind.name);
+      } else {
+        activeSubIndicators.add(ind.name);
+      }
+      if (globalData) {
+        renderMainChart(globalData);
+      }
+    };
+    container.appendChild(btn);
+  });
+}
 
 function unpack(rows, key) {
   return rows.map((row) => row[key]);
@@ -121,7 +160,7 @@ function renderStats(stats, data) {
 
   const statCards = [
     {
-      label: "Total Return",
+      label: "Portfolio Return",
       value: formatPercent(stats.totalReturn),
       change: `${formatNumber(stats.finalEquity - stats.initialEquity, 2)} ${quote}`,
       positive: stats.totalReturn >= 0,
@@ -139,13 +178,13 @@ function renderStats(stats, data) {
       positive: null,
     },
     {
-      label: "Max Drawdown",
+      label: "Portfolio Max Drawdown",
       value: formatPercent(-stats.maxDrawdown),
       change: "Peak to trough",
       positive: stats.maxDrawdown < 0.2,
     },
     {
-      label: "Sharpe Ratio",
+      label: "Portfolio Sharpe Ratio",
       value: formatNumber(stats.sharpeRatio, 2),
       change: "Risk-adjusted return",
       positive: stats.sharpeRatio > 1,
@@ -319,41 +358,64 @@ function renderMainChart(data) {
     });
   }
 
+  let chartHeight = 600;
+  let standaloneIndicators = [];
+  let renderedStandaloneIndicators = [];
   let standaloneIndicatorsCount = 0;
+
   if (data.indicators) {
-    standaloneIndicatorsCount = data.indicators.filter(ind => !ind.overlay).length;
+    standaloneIndicators = data.indicators.filter(ind => !ind.overlay);
+
+    if (!subIndicatorsInitialized) {
+      standaloneIndicators.forEach(ind => {
+        if (ind.name.startsWith("RSI")) {
+          activeSubIndicators.add(ind.name);
+        }
+      });
+      subIndicatorsInitialized = true;
+    }
+
+    renderedStandaloneIndicators = standaloneIndicators.filter(ind => activeSubIndicators.has(ind.name));
+    standaloneIndicatorsCount = renderedStandaloneIndicators.length;
   }
+
+  renderSubIndicatorToggles(standaloneIndicators);
 
   let yaxisDomain = [0.2, 1];
   let yaxis2Domain = [0, 0.15];
   let layoutAxes = {};
 
   if (showSubIndicators && standaloneIndicatorsCount > 0) {
-    const totalSubHeight = 0.35;
-    const indicatorsHeight = totalSubHeight / standaloneIndicatorsCount;
-    
-    // Adjust Main and Volume chart to make space for sub-indicators at the bottom
-    yaxisDomain = [totalSubHeight + 0.15, 1]; // Main chart 
-    yaxis2Domain = [totalSubHeight + 0.02, totalSubHeight + 0.12]; // Volume chart
-    
+    const subHeightPx = 150;
+    const baseHeightPx = 600;
+    chartHeight = baseHeightPx + (standaloneIndicatorsCount * subHeightPx);
+
+    const singleSubRatio = subHeightPx / chartHeight;
+    const totalSubHeightRatio = (standaloneIndicatorsCount * subHeightPx) / chartHeight;
+    const baseRatio = baseHeightPx / chartHeight;
+
+    yaxisDomain = [totalSubHeightRatio + baseRatio * 0.2, 1];
+    yaxis2Domain = [totalSubHeightRatio, totalSubHeightRatio + baseRatio * 0.15];
+
     let standaloneIndicatorIndex = 0;
-    
-    data.indicators.filter(ind => !ind.overlay).forEach((indicator) => {
+
+    renderedStandaloneIndicators.forEach((indicator) => {
       const axisNumber = standaloneIndicatorIndex + 3;
-      const heightStart = standaloneIndicatorIndex * indicatorsHeight;
-      
+      const heightEnd = totalSubHeightRatio - standaloneIndicatorIndex * singleSubRatio;
+      const heightStart = heightEnd - singleSubRatio;
+
       layoutAxes["yaxis" + axisNumber] = {
         title: indicator.name,
-        domain: [heightStart, heightStart + indicatorsHeight - 0.02],
+        domain: [heightStart, heightEnd - 0.02],
         showgrid: true,
         gridcolor: "#2a2f4a",
-        side: "right",
+        side: "left", // Move names to the left instead of right
         tickformat: ",.2f"
       };
 
-      if (indicator.name.startsWith("RSI")) {
+      if (indicator.name.startsWith("RSI") || indicator.name.startsWith("Stoch")) {
         layoutAxes["yaxis" + axisNumber].range = [0, 100];
-        layoutAxes["yaxis" + axisNumber].tickvals = [30, 70];
+        layoutAxes["yaxis" + axisNumber].tickvals = [20, 30, 70, 80];
       }
 
       indicator.metrics.forEach((metric) => {
@@ -368,12 +430,13 @@ function renderMainChart(data) {
           hovertemplate: "%{y:.2f}<extra></extra>",
         });
       });
-      
+
       standaloneIndicatorIndex++;
     });
   }
 
   const layout = {
+    height: chartHeight,
     template: "plotly_dark",
     paper_bgcolor: "#1a1f3a",
     plot_bgcolor: "#1a1f3a",
@@ -423,7 +486,7 @@ function renderMainChart(data) {
   
   if (showSubIndicators && standaloneIndicatorsCount > 0) {
     let standaloneIndicatorIndex = 0;
-    data.indicators.filter(ind => !ind.overlay).forEach((indicator) => {
+    renderedStandaloneIndicators.forEach((indicator) => {
       const axisNumber = standaloneIndicatorIndex + 3;
       if (indicator.name.startsWith("RSI")) {
         layout.shapes.push({
@@ -448,6 +511,10 @@ function renderMainChart(data) {
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
 
+  const chartDiv = document.getElementById("main-chart");
+  if (chartDiv) {
+    Plotly.purge(chartDiv);
+  }
   Plotly.newPlot("main-chart", plotData, layout, config);
 }
 
@@ -699,6 +766,15 @@ function toggleIndicators() {
   showIndicators = !showIndicators;
   if (globalData) {
     renderMainChart(globalData);
+  }
+
+  const indicatorBtn = document.querySelector('button[onclick="toggleIndicators()"]');
+  if (indicatorBtn) {
+    if (showIndicators) {
+      indicatorBtn.classList.add("active");
+    } else {
+      indicatorBtn.classList.remove("active");
+    }
   }
 }
 

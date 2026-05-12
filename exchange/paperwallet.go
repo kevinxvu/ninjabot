@@ -518,17 +518,27 @@ func (p *PaperWallet) updateEquityValues(candle model.Candle) {
 				total += amount * p.lastCandle[pair].Close
 			}
 
-			p.assetValues[asset] = append(p.assetValues[asset], AssetValue{
-				Time:  candle.Time,
-				Value: amount * p.lastCandle[pair].Close,
-			})
+			newValue := amount * p.lastCandle[pair].Close
+			if len(p.assetValues[asset]) > 0 && p.assetValues[asset][len(p.assetValues[asset])-1].Time.Equal(candle.Time) {
+				p.assetValues[asset][len(p.assetValues[asset])-1].Value = newValue
+			} else {
+				p.assetValues[asset] = append(p.assetValues[asset], AssetValue{
+					Time:  candle.Time,
+					Value: newValue,
+				})
+			}
 		}
 
 		baseCoinInfo := p.assets[p.baseCoin]
-		p.equityValues = append(p.equityValues, AssetValue{
-			Time:  candle.Time,
-			Value: total + baseCoinInfo.Lock + baseCoinInfo.Free,
-		})
+		newValue := total + baseCoinInfo.Lock + baseCoinInfo.Free
+		if len(p.equityValues) > 0 && p.equityValues[len(p.equityValues)-1].Time.Equal(candle.Time) {
+			p.equityValues[len(p.equityValues)-1].Value = newValue
+		} else {
+			p.equityValues = append(p.equityValues, AssetValue{
+				Time:  candle.Time,
+				Value: newValue,
+			})
+		}
 	}
 }
 

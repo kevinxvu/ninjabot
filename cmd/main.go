@@ -40,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Register chart routes (/data, /enhanced, /chart, /history, /health, /assets/).
+	// Register chart routes (/data, /history, /health, /assets/).
 	chart.Register(mux)
 
 	srv, err := newServer(chart)

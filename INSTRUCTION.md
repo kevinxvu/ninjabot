@@ -31,7 +31,7 @@
 - A **PaperWallet** for live simulation without real money
 - A **Backtesting engine** that replays historical candlestick data through your strategy
 - A **Chart/plot** system to visualize indicators and trade results
-- A **CLI tool** (`ninjabot`) to download historical OHLCV data to CSV
+- A **Web App** (`ninjabot`) providing a UI to configure and run backtests interactively.
 
 ---
 
@@ -46,7 +46,7 @@
 | SQL / ORM | [`gorm`](https://gorm.io) + SQLite (`glebarez/sqlite`) |
 | Logging | [`logrus`](https://github.com/sirupsen/logrus) |
 | Telegram Notifications | [`telebot.v2`](https://github.com/tucnak/telebot) |
-| Charting | Internal `plot` package (HTML/JS, uses `esbuild`) |
+| Charting | Internal `plot` package + `ui` package (HTML/JS/CSS, uses `go:embed`) |
 | Mocking | [`mockery/v2`](https://github.com/vektra/mockery) |
 | Testing | [`testify`](https://github.com/stretchr/testify) |
 
@@ -75,17 +75,16 @@ go version
 ```
 ninjabot/
 ├── cmd/
-│   ├── main.go            # CLI and Web UI entry point
+│   ├── main.go            # Web UI entry point
 │   ├── server.go          # HTTP server for Web UI backtesting
 │   ├── summary.go         # Summary and KPIs calculation for backtesting
 │   └── types.go           # HTTP request/response types
-├── download/              # Downloader logic used by the CLI
+├── download/              # Downloader logic used by the Web UI
 ├── examples/
 │   ├── backtesting/       # Example: run strategy on historical CSV data
 │   ├── futuremarket/      # Example: deploy bot on Binance Futures
 │   ├── paperwallet/       # Example: live simulation (no real money)
-│   ├── spotmarket/        # Example: deploy bot on Binance Spot
-│   └── strategies/        # Reusable example strategies (CrossEMA, Turtle, etc.)
+│   └── spotmarket/        # Example: deploy bot on Binance Spot
 ├── exchange/
 │   ├── binance.go         # Binance spot adapter
 │   ├── binance_future.go  # Binance futures adapter
@@ -98,17 +97,21 @@ ninjabot/
 ├── order/                 # Order controller and order feed/pub-sub
 ├── plot/
 │   ├── chart.go           # Chart builder; Reset/SetStrategy/SetPaperWallet/Register for reuse
-│   ├── indicator/         # Plot-specific indicator renderers (RSI, MACD, Bollinger, etc.)
-│   └── assets/            # Bundled HTML/JS chart templates (chart.html + summary panel)
+│   └── indicator/         # Plot-specific indicator renderers (RSI, MACD, Bollinger, etc.)
 ├── service/               # Core interfaces (Exchange, Broker, Notifier, Feeder, Telegram)
 ├── storage/               # Storage backends (BuntDB, SQL/SQLite)
 ├── strategy/              # Strategy interface definition and controller
+│   └── strategies/        # Reusable example strategies (CrossEMA, Turtle, etc.)
 ├── testdata/              # Sample CSV files for tests and backtesting examples
 ├── tools/
 │   ├── log/               # Logger setup (logrus wrapper)
 │   ├── metrics/           # Performance metrics bootstrap
 │   ├── scheduler.go       # Cron-like scheduler
 │   └── trailing.go        # Trailing stop utility
+├── ui/
+│   ├── assets/            # CSS and JS files for the web interface
+│   ├── template/          # HTML templates (chart.html, form.html)
+│   └── ui.go              # Embeds the assets and templates via go:embed
 ├── ninjabot.go            # Main bot struct, NewBot() constructor, bot.Run()
 ├── types.go               # Re-exported types (Settings, SideType, etc.)
 ├── go.mod / go.sum        # Go module definition
@@ -124,7 +127,7 @@ ninjabot/
 | `service/service.go` | Core interfaces (`Exchange`, `Broker`, `Feeder`, etc.) |
 | `exchange/binance.go` | Production exchange adapter |
 | `exchange/paperwallet.go` | Simulated exchange for paper trading & backtesting |
-| `cmd/main.go` | CLI entry point and Web UI for running backtests interactively via browser |
+| `cmd/main.go` | Web UI entry point for running backtests interactively via browser |
 | `plot/chart.go` | Chart server; `Register()`, `Reset()`, `SetStrategy()`, `SetPaperWallet()` |
 
 ---
@@ -167,26 +170,19 @@ make test
 
 All tests should pass before you start making changes.
 
-### Step 5 — (Optional) Install the CLI tool
+### Step 5 — (Optional) Install the Web App
 
-The `ninjabot` CLI is used to download historical candlestick data for backtesting or start the web UI:
+The `ninjabot` binary can be installed globally to start the web UI from anywhere:
 
 ```bash
 go install github.com/rodrigo-brito/ninjabot/cmd@latest
-```
-
-**Example usage (Download data):**
-
-```bash
-# Download last 30 days of BTC/USDT daily candles to btc.csv
-ninjabot download --pair BTCUSDT --timeframe 1d --days 30 --output ./btc.csv
 ```
 
 **Example usage (Web UI):**
 
 ```bash
 # Start the web UI server on port 8080
-ninjabot web --port 8080
+ninjabot
 ```
 
 ---
@@ -318,7 +314,7 @@ make run-backtest
 
 ### Web Backtest UI (no credentials needed)
 
-Opens a browser-based form to configure pairs, timeframe, and strategy parameters. Downloads live data from the Binance public API, runs the simulation, then redirects to the enhanced analytics chart:
+Opens a browser-based form to configure pairs, timeframe, and strategy parameters. Downloads live data from the Binance public API, runs the simulation, then redirects to the analytics chart:
 
 ```bash
 make run-webbacktest
@@ -366,7 +362,7 @@ make run-futures API_KEY=... API_SECRET=...
 
 ## Web Backtest UI
 
-`cmd/main.go` is a self-contained HTTP server that exposes a browser form, runs a full backtest in-process, and serves results on the enhanced chart — no terminal interaction required after startup.
+`cmd/main.go` is a self-contained HTTP server that exposes a browser form, runs a full backtest in-process, and serves results on the chart — no terminal interaction required after startup.
 
 ### How to run
 
@@ -380,12 +376,12 @@ make run-webbacktest
 1. Fill in the form (pairs, timeframe, days, initial capital, EMA/SMA periods)
 2. Click **Run Backtest**
 3. The server downloads OHLCV data from the Binance public API, runs the EMA-crossover strategy simulation, and stores the results
-4. Browser is automatically redirected to `/enhanced?pair=BTCUSDT`
-5. The enhanced chart renders candlesticks, indicators, buy/sell markers, equity curve **and** a full summary panel
+4. Browser is automatically redirected to `/?pair=BTCUSDT`
+5. The chart renders candlesticks, indicators, buy/sell markers, equity curve **and** a full summary panel
 
-### Summary panel on the enhanced chart
+### Summary panel on the chart
 
-After a backtest completes, `GET /api/summary` returns a JSON payload that the enhanced chart JS fetches automatically and renders as a dedicated **Backtest Summary** section below the trade history table. It includes:
+After a backtest completes, `GET /api/summary` returns a JSON payload that the chart JS fetches automatically and renders as a dedicated **Backtest Summary** section below the trade history table. It includes:
 
 | Section | Contents |
 |---|---|
@@ -400,14 +396,13 @@ After a backtest completes, `GET /api/summary` returns a JSON payload that the e
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | Backtest configuration form |
+| `GET` | `/` | Backtest configuration form (if no query param), or chart view (if `?pair=X`) |
 | `POST` | `/api/backtest` | JSON payload → runs simulation, returns `{"pairs":[...]}` |
 | `GET` | `/api/summary` | JSON summary of the last completed backtest |
-| `GET` | `/enhanced?pair=X` | Enhanced analytics chart |
 | `GET` | `/data?pair=X` | Raw chart data JSON (candles, indicators, orders, equity) |
 | `GET` | `/history?pair=X` | Trade history CSV download |
-| `GET` | `/chart?pair=X` | Classic candlestick chart |
 | `GET` | `/health` | Health check |
+| `GET` | `/enhanced?pair=X` | Legacy route, redirects to `/?pair=X` |
 
 ### Architecture
 
@@ -428,7 +423,7 @@ browser POST /api/backtest
         │                                                     │
   computeSummary()  ──► server.summaryJSON                    │
         │                                                     ▼
-  HTTP redirect to /enhanced          chart.OnCandle / chart.OnOrder
+  JS redirect to /?pair=BTCUSDT       chart.OnCandle / chart.OnOrder
                                             │
                               GET /data  ◄──┘
                                 │
@@ -488,7 +483,7 @@ The following methods were added to `plot.Chart` to support the web backtest UI 
 | `Reset` | `func (c *Chart) Reset()` | Clears all accumulated candle, order, and dataframe data. Call before starting a new backtest on a running server. |
 | `SetStrategy` | `func (c *Chart) SetStrategy(s strategy.Strategy)` | Updates the strategy used to compute chart indicator overlays. |
 | `SetPaperWallet` | `func (c *Chart) SetPaperWallet(w *exchange.PaperWallet)` | Replaces the wallet used for equity curve and drawdown data. |
-| `Register` | `func (c *Chart) Register(mux *http.ServeMux)` | Registers all chart HTTP routes on a custom mux instead of `http.DefaultServeMux`. Classic view served at `/chart`, not `/`. |
+| `Register` | `func (c *Chart) Register(mux *http.ServeMux)` | Registers all chart HTTP routes (`/data`, `/history`, `/health`, `/assets/`) on a custom mux instead of `http.DefaultServeMux`. |
 
 Example — embedding the chart inside a larger HTTP server:
 
@@ -496,7 +491,7 @@ Example — embedding the chart inside a larger HTTP server:
 mux := http.NewServeMux()
 
 chart, _ := plot.NewChart(plot.WithCustomIndicators(plotindicator.RSI(14, "purple")))
-chart.Register(mux) // routes: /chart, /enhanced, /data, /history, /health, /assets/
+chart.Register(mux) // routes: /data, /history, /health, /assets/
 
 mux.HandleFunc("/", myHomeHandler)
 mux.HandleFunc("/api/backtest", myBacktestHandler)

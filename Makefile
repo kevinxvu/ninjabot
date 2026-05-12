@@ -1,5 +1,4 @@
 .PHONY: help dev build install clean fmt vet tidy check generate lint test \
-        run-backtest run-webbacktest run-paper run-spot run-futures download release
 
 # Default target
 .DEFAULT_GOAL := help
@@ -10,8 +9,8 @@ help:
 	@echo ""
 	@echo "Dev:"
 	@echo "  dev            Run the main entry point (web backtest UI)"
-	@echo "  build          Build the ninjabot CLI binary to ./bin/ninjabot"
-	@echo "  install        Install the ninjabot CLI to GOPATH/bin"
+	@echo "  build          Build the ninjabot web app binary to ./bin/ninjabot"
+	@echo "  install        Install the ninjabot web app to GOPATH/bin"
 	@echo "  clean          Remove build artifacts"
 	@echo ""
 	@echo "Code Quality:"
@@ -33,7 +32,6 @@ help:
 	@echo "  run-futures       Run the futures market example (requires API_KEY, API_SECRET)"
 	@echo ""
 	@echo "Data:"
-	@echo "  download       Download historical OHLCV data (PAIR, TIMEFRAME, DAYS, OUTPUT)"
 	@echo ""
 	@echo "Release:"
 	@echo "  release        Build a snapshot release with goreleaser"
@@ -44,11 +42,11 @@ help:
 dev:
 	go run ./cmd
 
-## build: Compile the ninjabot CLI binary into ./bin/ninjabot
+## build: Compile the ninjabot web app binary into ./bin/ninjabot
 build:
 	go build -o bin/ninjabot ./cmd
 
-## install: Install the ninjabot CLI tool to $(GOPATH)/bin
+## install: Install the ninjabot web app to $(GOPATH)/bin
 install:
 	go install ./cmd/main.go
 
@@ -121,25 +119,6 @@ run-futures:
 	@test -n "$(API_KEY)"    || (echo "Error: API_KEY is not set"    && exit 1)
 	@test -n "$(API_SECRET)" || (echo "Error: API_SECRET is not set" && exit 1)
 	API_KEY=$(API_KEY) API_SECRET=$(API_SECRET) go run examples/futuremarket/futures.go
-
-## ── Data ─────────────────────────────────────────────────────────────────────
-
-## download: Download historical OHLCV candles to a CSV file
-## Usage: make download PAIR=BTCUSDT TIMEFRAME=1h DAYS=30 OUTPUT=./btc.csv
-## Add FUTURES=--futures to fetch from the futures market
-PAIR      ?= BTCUSDT
-TIMEFRAME ?= 1h
-DAYS      ?= 30
-OUTPUT    ?= ./$(PAIR)-$(TIMEFRAME).csv
-FUTURES   ?=
-
-download: build
-	./bin/ninjabot download \
-		--pair $(PAIR) \
-		--timeframe $(TIMEFRAME) \
-		--days $(DAYS) \
-		--output $(OUTPUT) \
-		$(FUTURES)
 
 ## ── Release ──────────────────────────────────────────────────────────────────
 

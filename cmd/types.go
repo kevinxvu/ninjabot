@@ -8,6 +8,8 @@ type backtestRequest struct {
 	Strategy       string  `json:"strategy"`
 	FastPeriod     int     `json:"fast_period"`
 	SlowPeriod     int     `json:"slow_period"`
+	DCAInterval    int     `json:"dca_interval"`
+	DCABuyAmount   float64 `json:"dca_buy_amount"`
 }
 
 type backtestResponse struct {

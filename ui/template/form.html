@@ -55,6 +55,7 @@
           <label>Strategy</label>
           <select name="strategy" id="strategy-select">
             <option value="emacross" selected>EMA Crossover</option>
+            <option value="dca">DCA (Dollar Cost Averaging)</option>
             <option value="ocosell">OCO Sell (Stochastic)</option>
             <option value="trailingstop">Trailing Stop</option>
             <option value="turtle">Turtle Trading</option>
@@ -74,6 +75,20 @@
             <label>Slow Period (SMA)</label>
             <input name="slow_period" type="number" value="21" min="3" max="200"/>
             <span class="hint">Sell when EMA crosses below SMA.</span>
+            </div>
+        </div>
+
+        <div id="dca-params" class="strategy-params grid" style="display:none; grid-column: 1/-1;">
+            <div class="field">
+            <label>Interval (Days)</label>
+            <input name="dca_interval" type="number" value="7" min="1" max="365"/>
+            <span class="hint">Buy every N days. Timeframe is fixed to 1d.</span>
+            </div>
+
+            <div class="field">
+            <label>Buy Amount (USDT)</label>
+            <input name="dca_buy_amount" type="number" value="100" min="10" step="10"/>
+            <span class="hint">Fixed amount to invest each time.</span>
             </div>
         </div>
 

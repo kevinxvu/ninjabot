@@ -23,17 +23,17 @@ import (
 
 type Chart struct {
 	sync.Mutex
-	port              int
-	debug             bool
-	candles           map[string][]Candle
-	dataframe         map[string]*model.Dataframe
-	ordersIDsByPair   map[string]*set.LinkedHashSetINT64
-	orderByID         map[int64]model.Order
-	indicators        []Indicator
-	paperWallet       *exchange.PaperWallet
-	indexHTML         *template.Template
-	strategy          strategy.Strategy
-	lastUpdate        time.Time
+	port            int
+	debug           bool
+	candles         map[string][]Candle
+	dataframe       map[string]*model.Dataframe
+	ordersIDsByPair map[string]*set.LinkedHashSetINT64
+	orderByID       map[int64]model.Order
+	indicators      []Indicator
+	paperWallet     *exchange.PaperWallet
+	indexHTML       *template.Template
+	strategy        strategy.Strategy
+	lastUpdate      time.Time
 }
 
 type Candle struct {
@@ -323,7 +323,6 @@ func (c *Chart) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-
 func (c *Chart) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.handleIndex(w, r)
 }
@@ -484,7 +483,7 @@ func (c *Chart) Start() error {
 	mux.HandleFunc("/", c.handleIndex)
 
 	fmt.Printf("Chart available at http://localhost:%d\n", c.port)
-	
+
 	return http.ListenAndServe(fmt.Sprintf(":%d", c.port), nil)
 }
 

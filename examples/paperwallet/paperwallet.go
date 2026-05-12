@@ -9,9 +9,9 @@ import (
 	"github.com/rodrigo-brito/ninjabot/plot/indicator"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/storage"
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 

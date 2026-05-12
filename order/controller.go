@@ -89,12 +89,18 @@ func (s summary) Profit() float64 {
 
 func (s summary) SQN() float64 {
 	total := float64(len(s.Win()) + len(s.Lose()))
+	if total == 0 {
+		return 0
+	}
 	avgProfit := s.Profit() / total
 	stdDev := 0.0
 	for _, profit := range append(s.Win(), s.Lose()...) {
 		stdDev += (profit - avgProfit) * (profit - avgProfit)
 	}
 	stdDev = math.Sqrt(stdDev / total)
+	if stdDev == 0 {
+		return 0
+	}
 	return math.Sqrt(total) * (s.Profit() / total) / stdDev
 }
 

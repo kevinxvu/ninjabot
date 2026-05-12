@@ -180,11 +180,15 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *exchange.PaperWallet, req ba
 		strategyTitle = "Trailing Stop"
 	} else if req.Strategy == "turtle" {
 		strategyTitle = "Turtle Trading"
+	} else if req.Strategy == "dca" {
+		strategyTitle = "DCA (Dollar Cost Averaging)"
 	}
 
 	strategyInfo := fmt.Sprintf("%s │ Timeframe: %s │ History: %d days", strategyTitle, req.Timeframe, req.Days)
 	if req.Strategy == "emacross" {
 		strategyInfo = fmt.Sprintf("%s (Fast=%d, Slow=%d) │ Timeframe: %s │ History: %d days", strategyTitle, req.FastPeriod, req.SlowPeriod, req.Timeframe, req.Days)
+	} else if req.Strategy == "dca" {
+		strategyInfo = fmt.Sprintf("%s (Interval=%d days, Buy=%.2f USDT) │ Timeframe: %s │ History: %d days", strategyTitle, req.DCAInterval, req.DCABuyAmount, req.Timeframe, req.Days)
 	}
 
 	data := summaryStat{

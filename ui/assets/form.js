@@ -38,7 +38,7 @@ strategySelect.addEventListener('change', (e) => {
 
     // Auto-set and lock timeframe based on strategy requirements
     const timeframeSelect = document.querySelector('select[name="timeframe"]');
-    if (e.target.value === 'ocosell') {
+    if (e.target.value === 'ocosell' || e.target.value === 'dca') {
         timeframeSelect.value = '1d';
         timeframeSelect.disabled = true;
     } else if (e.target.value === 'trailingstop' || e.target.value === 'turtle') {
@@ -84,6 +84,8 @@ form.addEventListener('submit', async (e) => {
     strategy:        data.strategy,
     fast_period:     parseInt(data.fast_period, 10),
     slow_period:     parseInt(data.slow_period, 10),
+    dca_interval:    parseInt(data.dca_interval, 10),
+    dca_buy_amount:  parseFloat(data.dca_buy_amount),
   };
 
   localStorage.setItem('ninjabot_backtest_config', JSON.stringify(data));
@@ -108,7 +110,7 @@ form.addEventListener('submit', async (e) => {
     const firstPair = json.pairs && json.pairs[0];
     showInfo('Backtest complete! Redirecting to chart…');
     setTimeout(() => {
-      window.location.href = '/enhanced?pair=' + (firstPair || '');
+      window.location.href = '/?pair=' + (firstPair || '');
     }, 600);
   } catch (err) {
     showError('Network error: ' + err.message);

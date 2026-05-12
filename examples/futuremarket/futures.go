@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 )
 
 // This example shows how to use futures market with NinjaBot.

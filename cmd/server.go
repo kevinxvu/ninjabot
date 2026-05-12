@@ -94,7 +94,7 @@ func (s *server) handleBacktest(w http.ResponseWriter, r *http.Request) {
 
 	// Force timeframe based on strategy
 	switch req.Strategy {
-	case "ocosell":
+	case "ocosell", "dca":
 		req.Timeframe = "1d"
 	case "trailingstop", "turtle":
 		req.Timeframe = "4h"
@@ -122,6 +122,16 @@ func (s *server) handleBacktest(w http.ResponseWriter, r *http.Request) {
 		if req.FastPeriod >= req.SlowPeriod {
 			writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "fast_period must be less than slow_period"})
 			return
+		}
+	}
+
+	// Validate DCA parameters if strategy is dca
+	if req.Strategy == "dca" {
+		if req.DCAInterval <= 0 {
+			req.DCAInterval = 7
+		}
+		if req.DCABuyAmount <= 0 {
+			req.DCABuyAmount = 100
 		}
 	}
 
@@ -191,6 +201,8 @@ func (s *server) runBacktest(ctx context.Context, req backtestRequest, pairs []s
 		strat = strategies.NewTrailing(pairs)
 	case "turtle":
 		strat = new(strategies.Turtle)
+	case "dca":
+		strat = strategies.NewDCA(req.Timeframe, req.DCAInterval, req.DCABuyAmount)
 	default:
 		strat = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
 	}

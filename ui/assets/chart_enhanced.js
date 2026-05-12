@@ -10,6 +10,7 @@ const STATUS_FILLED = "FILLED";
 let globalData = null;
 let showIndicators = true;
 let showVolume = true;
+let showSubIndicators = false;
 
 function unpack(rows, key) {
   return rows.map((row) => row[key]);
@@ -300,7 +301,6 @@ function renderMainChart(data) {
     plotData.push(volumeData);
   }
 
-  // Add indicators if enabled
   if (showIndicators && data.indicators) {
     data.indicators.forEach((indicator) => {
       if (indicator.overlay) {
@@ -316,6 +316,60 @@ function renderMainChart(data) {
           });
         });
       }
+    });
+  }
+
+  let standaloneIndicatorsCount = 0;
+  if (data.indicators) {
+    standaloneIndicatorsCount = data.indicators.filter(ind => !ind.overlay).length;
+  }
+
+  let yaxisDomain = [0.2, 1];
+  let yaxis2Domain = [0, 0.15];
+  let layoutAxes = {};
+
+  if (showSubIndicators && standaloneIndicatorsCount > 0) {
+    const totalSubHeight = 0.35;
+    const indicatorsHeight = totalSubHeight / standaloneIndicatorsCount;
+    
+    // Adjust Main and Volume chart to make space for sub-indicators at the bottom
+    yaxisDomain = [totalSubHeight + 0.15, 1]; // Main chart 
+    yaxis2Domain = [totalSubHeight + 0.02, totalSubHeight + 0.12]; // Volume chart
+    
+    let standaloneIndicatorIndex = 0;
+    
+    data.indicators.filter(ind => !ind.overlay).forEach((indicator) => {
+      const axisNumber = standaloneIndicatorIndex + 3;
+      const heightStart = standaloneIndicatorIndex * indicatorsHeight;
+      
+      layoutAxes["yaxis" + axisNumber] = {
+        title: indicator.name,
+        domain: [heightStart, heightStart + indicatorsHeight - 0.02],
+        showgrid: true,
+        gridcolor: "#2a2f4a",
+        side: "right",
+        tickformat: ",.2f"
+      };
+
+      if (indicator.name.startsWith("RSI")) {
+        layoutAxes["yaxis" + axisNumber].range = [0, 100];
+        layoutAxes["yaxis" + axisNumber].tickvals = [30, 70];
+      }
+
+      indicator.metrics.forEach((metric) => {
+        plotData.push({
+          name: `${indicator.name}${metric.name ? " - " + metric.name : ""}`,
+          x: metric.time,
+          y: metric.value,
+          type: metric.style || "scatter",
+          mode: "lines",
+          yaxis: "y" + axisNumber,
+          line: { color: metric.color || "#8b5cf6", width: 1.5 },
+          hovertemplate: "%{y:.2f}<extra></extra>",
+        });
+      });
+      
+      standaloneIndicatorIndex++;
     });
   }
 
@@ -350,19 +404,42 @@ function renderMainChart(data) {
       showline: true,
       linecolor: "#2a2f4a",
       side: "left",
-      domain: [0.2, 1],
+      domain: yaxisDomain,
       tickformat: ",.8~f",
     },
     yaxis2: {
       showgrid: false,
       side: "right",
-      domain: [0, 0.15],
+      domain: yaxis2Domain,
       showticklabels: false,
     },
     hovermode: "x unified",
     annotations: annotations,
     shapes: shapes,
   };
+
+  // Merge dynamic layout axes
+  Object.assign(layout, layoutAxes);
+  
+  if (showSubIndicators && standaloneIndicatorsCount > 0) {
+    let standaloneIndicatorIndex = 0;
+    data.indicators.filter(ind => !ind.overlay).forEach((indicator) => {
+      const axisNumber = standaloneIndicatorIndex + 3;
+      if (indicator.name.startsWith("RSI")) {
+        layout.shapes.push({
+          type: "line", xref: "paper", yref: "y" + axisNumber,
+          x0: 0, y0: 30, x1: 1, y1: 30,
+          line: { color: "rgba(255, 255, 255, 0.3)", width: 1, dash: "dot" }
+        });
+        layout.shapes.push({
+          type: "line", xref: "paper", yref: "y" + axisNumber,
+          x0: 0, y0: 70, x1: 1, y1: 70,
+          line: { color: "rgba(255, 255, 255, 0.3)", width: 1, dash: "dot" }
+        });
+      }
+      standaloneIndicatorIndex++;
+    });
+  }
 
   const config = {
     responsive: true,
@@ -395,6 +472,47 @@ function renderEquityChart(data) {
     line: { color: "#8b5cf6", width: 2 },
     yaxis: "y2",
   };
+
+  const shapes = [];
+  const annotations = [];
+
+  if (data.max_drawdown) {
+    const topPosition = data.equity_values.length > 0 ?
+      data.equity_values.reduce((p, v) => (p > v.value ? p : v.value), data.equity_values[0].value) : 0;
+
+    shapes.push({
+      type: "rect",
+      xref: "x",
+      yref: "y",
+      x0: data.max_drawdown.start,
+      y0: Math.min(...unpack(data.equity_values, "value")) * 0.95,
+      x1: data.max_drawdown.end,
+      y1: topPosition,
+      line: { width: 0 },
+      fillcolor: "rgba(239, 68, 68, 0.15)",
+      layer: "below"
+    });
+
+    const annotationPosition = new Date(
+      (new Date(data.max_drawdown.start).getTime() +
+        new Date(data.max_drawdown.end).getTime()) /
+        2
+    );
+
+    annotations.push({
+      x: annotationPosition,
+      y: topPosition - (topPosition * 0.05),
+      xref: "x",
+      yref: "y",
+      text: `Drawdown<br>${data.max_drawdown.value}%`,
+      showarrow: false,
+      font: {
+        size: 11,
+        color: "#ef4444",
+        family: "Inter, sans-serif"
+      }
+    });
+  }
 
   const layout = {
     template: "plotly_dark",
@@ -435,6 +553,8 @@ function renderEquityChart(data) {
       showgrid: false,
     },
     hovermode: "x unified",
+    shapes: shapes,
+    annotations: annotations,
   };
 
   const config = {
@@ -594,6 +714,22 @@ function toggleVolume() {
       volumeBtn.classList.add("active");
     } else {
       volumeBtn.classList.remove("active");
+    }
+  }
+}
+
+function toggleSubIndicators() {
+  showSubIndicators = !showSubIndicators;
+  if (globalData) {
+    renderMainChart(globalData);
+  }
+
+  const rsiBtn = document.getElementById('btn-sub-indicators');
+  if (rsiBtn) {
+    if (showSubIndicators) {
+      rsiBtn.classList.add("active");
+    } else {
+      rsiBtn.classList.remove("active");
     }
   }
 }

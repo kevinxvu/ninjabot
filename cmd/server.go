@@ -13,12 +13,13 @@ import (
 
 	ninjabot "github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/download"
-	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
+	"github.com/rodrigo-brito/ninjabot/ui"
 )
 
 type server struct {
@@ -30,7 +31,7 @@ type server struct {
 }
 
 func newServer(chart *plot.Chart) (*server, error) {
-	tpl, err := template.ParseFiles("plot/assets/form.html")
+	tpl, err := template.ParseFS(ui.Files, "template/form.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse form template: %w", err)
 	}
@@ -57,7 +58,7 @@ func (s *server) handleSummary(w http.ResponseWriter, r *http.Request) {
 // enhanced chart still works.
 func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if pair := r.URL.Query().Get("pair"); pair != "" {
-		http.Redirect(w, r, "/chart?pair="+pair, http.StatusFound)
+		s.chart.ServeHTTP(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -86,11 +87,11 @@ func (s *server) handleBacktest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "at least one pair is required"})
 		return
 	}
-	
+
 	if req.Strategy == "" {
 		req.Strategy = "emacross"
 	}
-	
+
 	// Force timeframe based on strategy
 	switch req.Strategy {
 	case "ocosell":
@@ -102,14 +103,14 @@ func (s *server) handleBacktest(w http.ResponseWriter, r *http.Request) {
 			req.Timeframe = "1h"
 		}
 	}
-	
+
 	if req.Days <= 0 {
 		req.Days = 30
 	}
 	if req.InitialCapital <= 0 {
 		req.InitialCapital = 10_000
 	}
-	
+
 	// Validate EMA parameters if strategy is emacross
 	if req.Strategy == "emacross" {
 		if req.FastPeriod <= 0 {

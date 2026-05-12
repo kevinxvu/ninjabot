@@ -534,7 +534,6 @@
             </nav>
             <div style="display: flex; gap: 0.5rem;">
                 <a class="history-btn" href="/history?pair={{ $.pair }}">📊 History</a>
-                <a class="history-btn" href="/?pair={{ $.pair }}" style="background: var(--bg-card); color: var(--text-secondary);">Classic View</a>
             </div>
         </div>
     </header>
@@ -556,6 +555,7 @@
                     <div class="chart-controls">
                         <button class="control-btn active" onclick="toggleIndicators()">Indicators</button>
                         <button class="control-btn active" onclick="toggleVolume()">Volume</button>
+                        <button class="control-btn" id="btn-sub-indicators" onclick="toggleSubIndicators()">Sub-Indicators</button>
                         <button class="control-btn" onclick="resetZoom()">Reset Zoom</button>
                     </div>
                 </div>

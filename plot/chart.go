@@ -2,7 +2,6 @@ package plot
 
 import (
 	"bytes"
-	"embed"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -16,15 +15,10 @@ import (
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/strategy"
+	"github.com/rodrigo-brito/ninjabot/ui"
 
 	"github.com/StudioSol/set"
-	"github.com/evanw/esbuild/pkg/api"
 	log "github.com/sirupsen/logrus"
-)
-
-var (
-	//go:embed assets
-	staticFiles embed.FS
 )
 
 type Chart struct {
@@ -37,9 +31,7 @@ type Chart struct {
 	orderByID         map[int64]model.Order
 	indicators        []Indicator
 	paperWallet       *exchange.PaperWallet
-	scriptContent     string
 	indexHTML         *template.Template
-	enhancedIndexHTML *template.Template
 	strategy          strategy.Strategy
 	lastUpdate        time.Time
 }
@@ -331,6 +323,11 @@ func (c *Chart) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+
+func (c *Chart) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c.handleIndex(w, r)
+}
+
 func (c *Chart) handleIndex(w http.ResponseWriter, r *http.Request) {
 	var pairs = make([]string, 0, len(c.candles))
 	for pair := range c.candles {
@@ -346,29 +343,6 @@ func (c *Chart) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "text/html")
 	err := c.indexHTML.Execute(w, map[string]interface{}{
-		"pair":  pair,
-		"pairs": pairs,
-	})
-	if err != nil {
-		log.Error(err)
-	}
-}
-
-func (c *Chart) handleEnhancedIndex(w http.ResponseWriter, r *http.Request) {
-	var pairs = make([]string, 0, len(c.candles))
-	for pair := range c.candles {
-		pairs = append(pairs, pair)
-	}
-
-	sort.Strings(pairs)
-	pair := r.URL.Query().Get("pair")
-	if pair == "" && len(pairs) > 0 {
-		http.Redirect(w, r, fmt.Sprintf("/enhanced?pair=%s", pairs[0]), http.StatusFound)
-		return
-	}
-
-	w.Header().Add("Content-Type", "text/html")
-	err := c.enhancedIndexHTML.Execute(w, map[string]interface{}{
 		"pair":  pair,
 		"pairs": pairs,
 	})
@@ -484,16 +458,10 @@ func (c *Chart) SetPaperWallet(w *exchange.PaperWallet) {
 // The caller is responsible for registering "/" if needed. The classic chart
 // view is available at "/chart".
 func (c *Chart) Register(mux *http.ServeMux) {
-	mux.Handle("/assets/", http.FileServer(http.FS(staticFiles)))
-
-	mux.HandleFunc("/assets/chart.js", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-type", "application/javascript")
-		fmt.Fprint(w, c.scriptContent)
-	})
-
+	mux.Handle("/assets/", http.FileServer(http.FS(ui.Files)))
 	mux.HandleFunc("/assets/chart_enhanced.js", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-type", "application/javascript")
-		content, err := staticFiles.ReadFile("assets/chart_enhanced.js")
+		content, err := ui.Files.ReadFile("assets/chart_enhanced.js")
 		if err != nil {
 			http.Error(w, "File not found", http.StatusNotFound)
 			return
@@ -504,8 +472,10 @@ func (c *Chart) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/health", c.handleHealth)
 	mux.HandleFunc("/history", c.handleTradingHistoryData)
 	mux.HandleFunc("/data", c.handleData)
-	mux.HandleFunc("/enhanced", c.handleEnhancedIndex)
-	mux.HandleFunc("/chart", c.handleIndex)
+	mux.HandleFunc("/enhanced", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/?pair="+r.URL.Query().Get("pair"), http.StatusFound)
+	})
+	// Removed old chart endpoint
 }
 
 func (c *Chart) Start() error {
@@ -514,7 +484,7 @@ func (c *Chart) Start() error {
 	mux.HandleFunc("/", c.handleIndex)
 
 	fmt.Printf("Chart available at http://localhost:%d\n", c.port)
-	fmt.Printf("Enhanced chart available at http://localhost:%d/enhanced\n", c.port)
+	
 	return http.ListenAndServe(fmt.Sprintf(":%d", c.port), nil)
 }
 
@@ -564,34 +534,11 @@ func NewChart(options ...Option) (*Chart, error) {
 		option(chart)
 	}
 
-	chartJS, err := staticFiles.ReadFile("assets/chart.js")
+	var err error
+	chart.indexHTML, err = template.ParseFS(ui.Files, "template/chart_enhanced.html")
 	if err != nil {
 		return nil, err
 	}
-
-	chart.indexHTML, err = template.ParseFS(staticFiles, "assets/chart.html")
-	if err != nil {
-		return nil, err
-	}
-
-	chart.enhancedIndexHTML, err = template.ParseFS(staticFiles, "assets/chart_enhanced.html")
-	if err != nil {
-		return nil, err
-	}
-
-	transpileChartJS := api.Transform(string(chartJS), api.TransformOptions{
-		Loader:            api.LoaderJS,
-		Target:            api.ES2015,
-		MinifySyntax:      !chart.debug,
-		MinifyIdentifiers: !chart.debug,
-		MinifyWhitespace:  !chart.debug,
-	})
-
-	if len(transpileChartJS.Errors) > 0 {
-		return nil, fmt.Errorf("chart script faild with: %v", transpileChartJS.Errors)
-	}
-
-	chart.scriptContent = string(transpileChartJS.Code)
 
 	return chart, nil
 }

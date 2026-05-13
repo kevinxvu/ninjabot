@@ -7,6 +7,7 @@ import (
 
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/plot/indicator"
+	"github.com/rodrigo-brito/ninjabot/server"
 
 	"github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/exchange"
@@ -88,8 +89,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	srv, err := server.NewServer(chart)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	go func() {
-		err := chart.Start()
+		err := srv.Start(ctx, 8080)
 		if err != nil {
 			log.Fatal(err)
 		}

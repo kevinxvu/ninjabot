@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"encoding/json"
@@ -130,6 +130,7 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *exchange.PaperWallet, req ba
 			CIPFMean:      ciPF.Mean,
 			CIPFLower:     ciPF.Lower,
 			CIPFUpper:     ciPF.Upper,
+			AvgEntryPrice: wallet.AvgLongPrice(pair),
 		})
 
 		totalTrades += trades

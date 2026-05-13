@@ -41,3 +41,4 @@ Key components and directory structure:
 *   Always ensure mathematical precision when working with `indicator/` calculations or modifying `model.Candle` / `model.Order` logic, as this directly impacts trading results.
 *   To test your strategies with real (but historical) data, use the backtest engine combining `exchange.CSVFeed` with your strategy.
 *   When dealing with multiple pairs, ensure that equity and portfolio metrics accurately reflect the aggregate wallet state to prevent duplicate timestamps or misleading pair-specific data.
+*   **Cleanup**: Always clean up any temporary scratchpad files (e.g., `*.patch`, `*.sh`, `*.orig`) created during code modifications before finishing a task.

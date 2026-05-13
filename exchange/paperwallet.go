@@ -138,6 +138,13 @@ func (p *PaperWallet) EquityValues() []AssetValue {
 	return p.equityValues
 }
 
+func (p *PaperWallet) AvgLongPrice(pair string) float64 {
+	if val, ok := p.avgLongPrice[pair]; ok {
+		return val
+	}
+	return 0.0
+}
+
 func (p *PaperWallet) MaxDrawdown() (float64, time.Time, time.Time) {
 	if len(p.equityValues) < 1 {
 		return 0, time.Time{}, time.Time{}

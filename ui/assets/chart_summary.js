@@ -56,40 +56,64 @@
         html += '<h4>Per-Pair Performance</h4>';
         html += '<table class="pair-table">';
         html += '<thead><tr>';
-        ['Pair','Trades','Win','Loss','% Win','Payoff','Pr.Fact','SQN','Profit','Volume'].forEach(function(h){
+
+        var isDCA = d.strategy_info && d.strategy_info.toLowerCase().includes('dca');
+        var headers = ['Pair','Trades'];
+        if (isDCA) {
+            headers.push('Avg Price', 'Realized Profit', 'Volume');
+        } else {
+            headers.push('Win', 'Loss', '% Win', 'Payoff', 'Pr.Fact', 'SQN', 'Profit', 'Volume');
+        }
+
+        headers.forEach(function(h){
             html += '<th>' + h + '</th>';
         });
         html += '</tr></thead><tbody>';
 
         d.pairs.forEach(function(p) {
-            var winColor = p.win_pct >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
             html += '<tr>'
                 + '<td>' + p.pair + '</td>'
-                + '<td>' + p.trades + '</td>'
-                + '<td style="color:var(--accent-green)">' + p.win + '</td>'
-                + '<td style="color:var(--accent-red)">' + p.loss + '</td>'
-                + '<td style="color:' + winColor + '">' + fmt(p.win_pct,1) + '%</td>'
-                + '<td>' + fmt(p.payoff,3) + '</td>'
-                + '<td>' + fmt(p.profit_factor,3) + '</td>'
-                + '<td>' + fmt(p.sqn,1) + '</td>'
-                + '<td style="color:' + colorPct(p.profit) + '">' + fmt(p.profit) + '</td>'
-                + '<td>' + fmt(p.volume) + '</td>'
-                + '</tr>';
+                + '<td>' + p.trades + '</td>';
+
+            if (isDCA) {
+                html += '<td>' + fmt(p.avg_entry_price, 4) + '</td>'
+                    + '<td style="color:' + colorPct(p.profit) + '">' + fmt(p.profit) + '</td>'
+                    + '<td>' + fmt(p.volume) + '</td>';
+            } else {
+                var winColor = p.win_pct >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
+                html += '<td style="color:var(--accent-green)">' + p.win + '</td>'
+                    + '<td style="color:var(--accent-red)">' + p.loss + '</td>'
+                    + '<td style="color:' + winColor + '">' + fmt(p.win_pct,1) + '%</td>'
+                    + '<td>' + fmt(p.payoff,3) + '</td>'
+                    + '<td>' + fmt(p.profit_factor,3) + '</td>'
+                    + '<td>' + fmt(p.sqn,1) + '</td>'
+                    + '<td style="color:' + colorPct(p.profit) + '">' + fmt(p.profit) + '</td>'
+                    + '<td>' + fmt(p.volume) + '</td>';
+            }
+            html += '</tr>';
         });
+
         // totals row
-        var totWinColor = d.win_rate >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
         html += '<tr>'
             + '<td>TOTAL</td>'
-            + '<td>' + d.total_trades + '</td>'
-            + '<td style="color:var(--accent-green)">' + d.total_wins + '</td>'
-            + '<td style="color:var(--accent-red)">' + d.total_losses + '</td>'
-            + '<td style="color:' + totWinColor + '">' + fmt(d.win_rate,1) + '%</td>'
-            + '<td>' + fmt(d.avg_payoff,3) + '</td>'
-            + '<td>' + fmt(d.avg_profit_factor,3) + '</td>'
-            + '<td>' + fmt(d.avg_sqn,1) + '</td>'
-            + '<td style="color:' + colorPct(d.total_profit) + '">' + fmt(d.total_profit) + '</td>'
-            + '<td>' + fmt(d.total_volume) + '</td>'
-            + '</tr>';
+            + '<td>' + d.total_trades + '</td>';
+
+        if (isDCA) {
+            html += '<td>-</td>'
+                + '<td style="color:' + colorPct(d.total_profit) + '">' + fmt(d.total_profit) + '</td>'
+                + '<td>' + fmt(d.total_volume) + '</td>';
+        } else {
+            var totWinColor = d.win_rate >= 50 ? 'var(--accent-green)' : 'var(--accent-red)';
+            html += '<td style="color:var(--accent-green)">' + d.total_wins + '</td>'
+                + '<td style="color:var(--accent-red)">' + d.total_losses + '</td>'
+                + '<td style="color:' + totWinColor + '">' + fmt(d.win_rate,1) + '%</td>'
+                + '<td>' + fmt(d.avg_payoff,3) + '</td>'
+                + '<td>' + fmt(d.avg_profit_factor,3) + '</td>'
+                + '<td>' + fmt(d.avg_sqn,1) + '</td>'
+                + '<td style="color:' + colorPct(d.total_profit) + '">' + fmt(d.total_profit) + '</td>'
+                + '<td>' + fmt(d.total_volume) + '</td>';
+        }
+        html += '</tr>';
         html += '</tbody></table></div>';
 
         // ── Two-column row: Confidence Intervals + Return Histogram

@@ -1,46 +1,147 @@
-package main
+package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	ninjabot "github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/download"
 	"github.com/rodrigo-brito/ninjabot/exchange"
-	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
-	"github.com/rodrigo-brito/ninjabot/ui"
 )
 
-type server struct {
-	mu          sync.Mutex
-	running     bool
-	chart       *plot.Chart
-	formTpl     *template.Template
-	summaryJSON json.RawMessage // protected by mu
+type drawdown struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+	Value string    `json:"value"`
 }
 
-func newServer(chart *plot.Chart) (*server, error) {
-	tpl, err := template.ParseFS(ui.Files, "template/form.html")
-	if err != nil {
-		return nil, fmt.Errorf("parse form template: %w", err)
+func (s *Server) HandleHealth(w http.ResponseWriter, _ *http.Request) {
+	if time.Since(s.chart.LastUpdate()) > time.Hour+10*time.Minute {
+		_, err := w.Write([]byte(s.chart.LastUpdate().String()))
+		if err != nil {
+			log.Error(err)
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
 	}
-	return &server{chart: chart, formTpl: tpl}, nil
+	w.WriteHeader(http.StatusOK)
 }
 
-// handleSummary serves the structured backtest summary as JSON.
+func (s *Server) HandleChartIndex(w http.ResponseWriter, r *http.Request) {
+	candles := s.chart.Candles()
+	var pairs = make([]string, 0, len(candles))
+	for pair := range candles {
+		pairs = append(pairs, pair)
+	}
+
+	sort.Strings(pairs)
+	pair := r.URL.Query().Get("pair")
+	if pair == "" && len(pairs) > 0 {
+		http.Redirect(w, r, fmt.Sprintf("/?pair=%s", pairs[0]), http.StatusFound)
+		return
+	}
+
+	w.Header().Add("Content-Type", "text/html")
+	err := s.templates.ExecuteTemplate(w, "chart.html", map[string]interface{}{
+		"pair":  pair,
+		"pairs": pairs,
+	})
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+func (s *Server) HandleChartData(w http.ResponseWriter, r *http.Request) {
+	pair := r.URL.Query().Get("pair")
+	if pair == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-type", "text/json")
+
+	var maxDrawdown *drawdown
+	if s.chart.PaperWallet() != nil {
+		value, start, end := s.chart.PaperWallet().MaxDrawdown()
+		maxDrawdown = &drawdown{
+			Start: start,
+			End:   end,
+			Value: fmt.Sprintf("%.1f", value*100),
+		}
+	}
+
+	asset, quote := exchange.SplitAssetQuote(pair)
+	assetValues, equityValues := s.chart.EquityValuesByPair(pair)
+	err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"candles":       s.chart.CandlesByPair(pair),
+		"indicators":    s.chart.IndicatorsByPair(pair),
+		"shapes":        s.chart.ShapesByPair(pair),
+		"asset_values":  assetValues,
+		"equity_values": equityValues,
+		"quote":         quote,
+		"asset":         asset,
+		"max_drawdown":  maxDrawdown,
+	})
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+func (s *Server) HandleTradingHistoryData(w http.ResponseWriter, r *http.Request) {
+	pair := r.URL.Query().Get("pair")
+	if pair == "" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment;filename=history_"+pair+".csv")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	orders := s.chart.OrderStringByPair(pair)
+
+	buffer := bytes.NewBuffer(nil)
+	csvWriter := csv.NewWriter(buffer)
+	err := csvWriter.Write([]string{"created_at", "status", "side", "id", "type", "quantity", "price", "total", "profit"})
+	if err != nil {
+		log.Errorf("failed writing header file: %s", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	err = csvWriter.WriteAll(orders)
+	if err != nil {
+		log.Errorf("failed writing data: %s", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	csvWriter.Flush()
+
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(buffer.Bytes())
+	if err != nil {
+		log.Errorf("failed writing response: %s", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+}
+
+// HandleSummary serves the structured backtest summary as JSON.
+
 // Returns 404 if no backtest has been run yet.
-func (s *server) handleSummary(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleSummary(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	data := s.summaryJSON
 	s.mu.Unlock()
@@ -53,23 +154,22 @@ func (s *server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// handleRoot serves the backtest form. If a ?pair= query param is present it
-// redirects to /chart (classic view), so that the "Classic View" link in the
-// enhanced chart still works.
-func (s *server) handleRoot(w http.ResponseWriter, r *http.Request) {
+// HandleRoot serves the backtest form. If a ?pair= query param is present it
+// displays the chart view.
+func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
 	if pair := r.URL.Query().Get("pair"); pair != "" {
-		s.chart.ServeHTTP(w, r)
+		s.HandleChartIndex(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.formTpl.Execute(w, nil); err != nil {
+	if err := s.templates.ExecuteTemplate(w, "form.html", nil); err != nil {
 		log.Errorf("render form: %v", err)
 	}
 }
 
-// handleBacktest receives POST /api/backtest, downloads historical data,
+// HandleBacktest receives POST /api/backtest, downloads historical data,
 // runs the simulation, and returns the list of pairs to redirect to.
-func (s *server) handleBacktest(w http.ResponseWriter, r *http.Request) {
+func (s *Server) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -160,7 +260,7 @@ func (s *server) handleBacktest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, backtestResponse{Pairs: pairs})
 }
 
-func (s *server) runBacktest(ctx context.Context, req backtestRequest, pairs []string) error {
+func (s *Server) runBacktest(ctx context.Context, req backtestRequest, pairs []string) error {
 	// Create a temp directory to hold downloaded CSV files.
 	tmpDir, err := os.MkdirTemp("", "ninjabot-backtest-*")
 	if err != nil {

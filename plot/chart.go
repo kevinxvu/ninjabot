@@ -1,13 +1,7 @@
 package plot
 
 import (
-	"bytes"
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"html/template"
-	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,15 +9,12 @@ import (
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/strategy"
-	"github.com/rodrigo-brito/ninjabot/ui"
 
 	"github.com/StudioSol/set"
-	log "github.com/sirupsen/logrus"
 )
 
 type Chart struct {
 	sync.Mutex
-	port            int
 	debug           bool
 	candles         map[string][]Candle
 	dataframe       map[string]*model.Dataframe
@@ -31,7 +22,6 @@ type Chart struct {
 	orderByID       map[int64]model.Order
 	indicators      []Indicator
 	paperWallet     *exchange.PaperWallet
-	indexHTML       *template.Template
 	strategy        strategy.Strategy
 	lastUpdate      time.Time
 }
@@ -168,7 +158,11 @@ func (c *Chart) equityValuesByPair(pair string) (asset []assetValue, quote []ass
 	return assetValues, equityValues
 }
 
-func (c *Chart) indicatorsByPair(pair string) []plotIndicator {
+func (c *Chart) EquityValuesByPair(pair string) ([]assetValue, []assetValue) {
+	return c.equityValuesByPair(pair)
+}
+
+func (c *Chart) IndicatorsByPair(pair string) []plotIndicator {
 	indicators := make([]plotIndicator, 0)
 	for _, i := range c.indicators {
 		i.Load(c.dataframe[pair])
@@ -223,7 +217,7 @@ func (c *Chart) indicatorsByPair(pair string) []plotIndicator {
 	return indicators
 }
 
-func (c *Chart) candlesByPair(pair string) []Candle {
+func (c *Chart) CandlesByPair(pair string) []Candle {
 	candles := make([]Candle, len(c.candles[pair]))
 	orderSet := c.ordersIDsByPair[pair]
 	if orderSet == nil {
@@ -261,7 +255,7 @@ func (c *Chart) candlesByPair(pair string) []Candle {
 	return candles
 }
 
-func (c *Chart) shapesByPair(pair string) []Shape {
+func (c *Chart) ShapesByPair(pair string) []Shape {
 	shapes := make([]Shape, 0)
 	if c.ordersIDsByPair[pair] == nil {
 		return shapes
@@ -292,7 +286,7 @@ func (c *Chart) shapesByPair(pair string) []Shape {
 	return shapes
 }
 
-func (c *Chart) orderStringByPair(pair string) [][]string {
+func (c *Chart) OrderStringByPair(pair string) [][]string {
 	orders := make([][]string, 0)
 	if c.ordersIDsByPair[pair] == nil {
 		return orders
@@ -311,118 +305,22 @@ func (c *Chart) orderStringByPair(pair string) [][]string {
 	return orders
 }
 
-func (c *Chart) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	if time.Since(c.lastUpdate) > time.Hour+10*time.Minute {
-		_, err := w.Write([]byte(c.lastUpdate.String()))
-		if err != nil {
-			log.Error(err)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+func (c *Chart) LastUpdate() time.Time {
+	c.Lock()
+	defer c.Unlock()
+	return c.lastUpdate
 }
 
-func (c *Chart) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	c.handleIndex(w, r)
+func (c *Chart) Candles() map[string][]Candle {
+	c.Lock()
+	defer c.Unlock()
+	return c.candles
 }
 
-func (c *Chart) handleIndex(w http.ResponseWriter, r *http.Request) {
-	var pairs = make([]string, 0, len(c.candles))
-	for pair := range c.candles {
-		pairs = append(pairs, pair)
-	}
-
-	sort.Strings(pairs)
-	pair := r.URL.Query().Get("pair")
-	if pair == "" && len(pairs) > 0 {
-		http.Redirect(w, r, fmt.Sprintf("/?pair=%s", pairs[0]), http.StatusFound)
-		return
-	}
-
-	w.Header().Add("Content-Type", "text/html")
-	err := c.indexHTML.Execute(w, map[string]interface{}{
-		"pair":  pair,
-		"pairs": pairs,
-	})
-	if err != nil {
-		log.Error(err)
-	}
-}
-
-func (c *Chart) handleData(w http.ResponseWriter, r *http.Request) {
-	pair := r.URL.Query().Get("pair")
-	if pair == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-type", "text/json")
-
-	var maxDrawdown *drawdown
-	if c.paperWallet != nil {
-		value, start, end := c.paperWallet.MaxDrawdown()
-		maxDrawdown = &drawdown{
-			Start: start,
-			End:   end,
-			Value: fmt.Sprintf("%.1f", value*100),
-		}
-	}
-
-	asset, quote := exchange.SplitAssetQuote(pair)
-	assetValues, equityValues := c.equityValuesByPair(pair)
-	err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"candles":       c.candlesByPair(pair),
-		"indicators":    c.indicatorsByPair(pair),
-		"shapes":        c.shapesByPair(pair),
-		"asset_values":  assetValues,
-		"equity_values": equityValues,
-		"quote":         quote,
-		"asset":         asset,
-		"max_drawdown":  maxDrawdown,
-	})
-	if err != nil {
-		log.Error(err)
-	}
-}
-
-func (c *Chart) handleTradingHistoryData(w http.ResponseWriter, r *http.Request) {
-	pair := r.URL.Query().Get("pair")
-	if pair == "" {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment;filename=history_"+pair+".csv")
-	w.Header().Set("Transfer-Encoding", "chunked")
-
-	orders := c.orderStringByPair(pair)
-
-	buffer := bytes.NewBuffer(nil)
-	csvWriter := csv.NewWriter(buffer)
-	err := csvWriter.Write([]string{"created_at", "status", "side", "id", "type", "quantity", "price", "total", "profit"})
-	if err != nil {
-		log.Errorf("failed writing header file: %s", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	err = csvWriter.WriteAll(orders)
-	if err != nil {
-		log.Errorf("failed writing data: %s", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	csvWriter.Flush()
-
-	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(buffer.Bytes())
-	if err != nil {
-		log.Errorf("failed writing response: %s", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
+func (c *Chart) PaperWallet() *exchange.PaperWallet {
+	c.Lock()
+	defer c.Unlock()
+	return c.paperWallet
 }
 
 // Reset clears all accumulated candle, order and dataframe data so the chart
@@ -453,47 +351,7 @@ func (c *Chart) SetPaperWallet(w *exchange.PaperWallet) {
 	c.paperWallet = w
 }
 
-// Register registers all chart HTTP routes on mux, excluding the root path "/".
-// The caller is responsible for registering "/" if needed. The classic chart
-// view is available at "/chart".
-func (c *Chart) Register(mux *http.ServeMux) {
-	mux.Handle("/assets/", http.FileServer(http.FS(ui.Files)))
-	mux.HandleFunc("/assets/chart.js", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-type", "application/javascript")
-		content, err := ui.Files.ReadFile("assets/chart.js")
-		if err != nil {
-			http.Error(w, "File not found", http.StatusNotFound)
-			return
-		}
-		fmt.Fprint(w, string(content))
-	})
-
-	mux.HandleFunc("/health", c.handleHealth)
-	mux.HandleFunc("/history", c.handleTradingHistoryData)
-	mux.HandleFunc("/data", c.handleData)
-	mux.HandleFunc("/enhanced", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/?pair="+r.URL.Query().Get("pair"), http.StatusFound)
-	})
-	// Removed old chart endpoint
-}
-
-func (c *Chart) Start() error {
-	mux := http.DefaultServeMux
-	c.Register(mux)
-	mux.HandleFunc("/", c.handleIndex)
-
-	fmt.Printf("Chart available at http://localhost:%d\n", c.port)
-
-	return http.ListenAndServe(fmt.Sprintf(":%d", c.port), nil)
-}
-
 type Option func(*Chart)
-
-func WithPort(port int) Option {
-	return func(chart *Chart) {
-		chart.port = port
-	}
-}
 
 func WithStrategyIndicators(strategy strategy.Strategy) Option {
 	return func(chart *Chart) {
@@ -522,7 +380,6 @@ func WithCustomIndicators(indicators ...Indicator) Option {
 
 func NewChart(options ...Option) (*Chart, error) {
 	chart := &Chart{
-		port:            8080,
 		candles:         make(map[string][]Candle),
 		dataframe:       make(map[string]*model.Dataframe),
 		ordersIDsByPair: make(map[string]*set.LinkedHashSetINT64),
@@ -531,12 +388,6 @@ func NewChart(options ...Option) (*Chart, error) {
 
 	for _, option := range options {
 		option(chart)
-	}
-
-	var err error
-	chart.indexHTML, err = template.ParseFS(ui.Files, "template/chart.html")
-	if err != nil {
-		return nil, err
 	}
 
 	return chart, nil

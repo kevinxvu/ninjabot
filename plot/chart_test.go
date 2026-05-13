@@ -123,7 +123,7 @@ func TestChart_CandleAndOrder(t *testing.T) {
 			},
 		},
 	}
-	candles := c.candlesByPair(pair)
+	candles := c.CandlesByPair(pair)
 	require.Equal(t, expectCandleByPair, candles)
 
 	//test shapes by pare
@@ -143,15 +143,8 @@ func TestChart_CandleAndOrder(t *testing.T) {
 			Color:  "rgba(255, 0, 0, 0.3)",
 		},
 	}
-	shaped := c.shapesByPair(pair)
+	shaped := c.ShapesByPair(pair)
 	require.Equal(t, expectShapesByPair, shaped)
-}
-
-func TestChart_WithPort(t *testing.T) {
-	port := 8081
-	c, err := NewChart(WithPort(port))
-	require.NoErrorf(t, err, "error when initial chart")
-	require.Equal(t, port, c.port)
 }
 
 func TestChart_WithPaperWallet(t *testing.T) {
@@ -224,12 +217,12 @@ func TestChart_OrderStringByPair(t *testing.T) {
 		{"2021-10-13 20:00:00 +0000 UTC", "FILLED", "BUY", "2", "MARKET", "0.751520", "3607.420000", "2711.05", ""},
 	}
 
-	ordersPair1 := c.orderStringByPair(pair1)
+	ordersPair1 := c.OrderStringByPair(pair1)
 	require.Equal(t, expectPair1, ordersPair1)
 
 	expectPair2 := [][]string{
 		{"2021-10-13 20:00:00 +0000 UTC", "FILLED", "BUY", "13", "MARKET", "12.083240", "470.000000", "5679.12", ""},
 	}
-	ordersPair2 := c.orderStringByPair(pair2)
+	ordersPair2 := c.OrderStringByPair(pair2)
 	require.Equal(t, expectPair2, ordersPair2)
 }

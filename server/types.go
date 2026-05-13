@@ -1,4 +1,4 @@
-package main
+package server
 
 type backtestRequest struct {
 	Pairs          string  `json:"pairs"`
@@ -60,6 +60,7 @@ type pairStat struct {
 	CIPFMean      float64 `json:"ci_pf_mean"`
 	CIPFLower     float64 `json:"ci_pf_lower"`
 	CIPFUpper     float64 `json:"ci_pf_upper"`
+	AvgEntryPrice float64 `json:"avg_entry_price"`
 }
 
 type returnBucket struct {

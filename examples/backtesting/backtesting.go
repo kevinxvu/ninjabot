@@ -7,6 +7,7 @@ import (
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/plot/indicator"
+	"github.com/rodrigo-brito/ninjabot/server"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
@@ -100,7 +101,12 @@ func main() {
 	bot.Summary()
 
 	// Display candlesticks chart in local browser
-	err = chart.Start()
+	srv, err := server.NewServer(chart)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = srv.Start(ctx, 8080)
 	if err != nil {
 		log.Fatal(err)
 	}

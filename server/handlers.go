@@ -39,30 +39,6 @@ func (s *Server) HandleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (s *Server) HandleChartIndex(w http.ResponseWriter, r *http.Request) {
-	candles := s.chart.Candles()
-	var pairs = make([]string, 0, len(candles))
-	for pair := range candles {
-		pairs = append(pairs, pair)
-	}
-
-	sort.Strings(pairs)
-	pair := r.URL.Query().Get("pair")
-	if pair == "" && len(pairs) > 0 {
-		http.Redirect(w, r, fmt.Sprintf("/?pair=%s", pairs[0]), http.StatusFound)
-		return
-	}
-
-	w.Header().Add("Content-Type", "text/html")
-	err := s.templates.ExecuteTemplate(w, "chart.html", map[string]interface{}{
-		"pair":  pair,
-		"pairs": pairs,
-	})
-	if err != nil {
-		log.Error(err)
-	}
-}
-
 func (s *Server) HandleChartData(w http.ResponseWriter, r *http.Request) {
 	pair := r.URL.Query().Get("pair")
 	if pair == "" {
@@ -154,16 +130,15 @@ func (s *Server) HandleSummary(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// HandleRoot serves the backtest form. If a ?pair= query param is present it
-// displays the chart view.
-func (s *Server) HandleRoot(w http.ResponseWriter, r *http.Request) {
-	if pair := r.URL.Query().Get("pair"); pair != "" {
-		s.HandleChartIndex(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.ExecuteTemplate(w, "form.html", nil); err != nil {
-		log.Errorf("render form: %v", err)
+// HandlePairs serves the list of all available trading pairs
+func (s *Server) HandlePairs(w http.ResponseWriter, r *http.Request) {
+	pairs := exchange.AvailablePairs()
+	sort.Strings(pairs)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=86400") // Cache for 1 day
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"pairs": pairs}); err != nil {
+		log.Errorf("encode pairs: %v", err)
 	}
 }
 

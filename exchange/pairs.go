@@ -34,6 +34,15 @@ func SplitAssetQuote(pair string) (asset string, quote string) {
 	return data.Asset, data.Quote
 }
 
+// AvailablePairs returns a list of all available trading pairs
+func AvailablePairs() []string {
+	pairs := make([]string, 0, len(pairAssetQuoteMap))
+	for pair := range pairAssetQuoteMap {
+		pairs = append(pairs, pair)
+	}
+	return pairs
+}
+
 func updatePairsFile() error {
 	client := binance.NewClient("", "")
 	sportInfo, err := client.NewExchangeInfoService().Do(context.Background())

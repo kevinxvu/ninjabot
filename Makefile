@@ -13,6 +13,12 @@ help:
 	@echo "  install        Install the ninjabot web app to GOPATH/bin"
 	@echo "  clean          Remove build artifacts"
 	@echo ""
+	@echo "UI:"
+	@echo "  ui-install     Install UI dependencies (npm install)"
+	@echo "  ui-dev         Run the UI development server (npm run dev)"
+	@echo "  ui-build       Build the UI for production (npm run build)"
+	@echo "  ui-lint        Run linter on the UI codebase (npm run lint)"
+	@echo ""
 	@echo "Code Quality:"
 	@echo "  fmt            Format all Go source files with gofmt"
 	@echo "  vet            Run go vet on all packages"
@@ -53,6 +59,24 @@ install:
 ## clean: Remove compiled binaries and build artifacts
 clean:
 	rm -rf bin/
+
+## ── UI ───────────────────────────────────────────────────────────────────────
+
+## ui-install: Install UI dependencies
+ui-install:
+	cd ui && npm install
+
+## ui-dev: Run the UI development server
+ui-dev:
+	cd ui && npm run dev
+
+## ui-build: Build the UI for production
+ui-build:
+	cd ui && npm run build
+
+## ui-lint: Run linter on the UI codebase
+ui-lint:
+	cd ui && npm run lint
 
 ## ── Code Quality ─────────────────────────────────────────────────────────────
 

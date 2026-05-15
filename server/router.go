@@ -27,6 +27,8 @@ func SetupRouter(srv *Server) *http.ServeMux {
 	mux.HandleFunc("/api/backtest", srv.HandleBacktest)
 	mux.HandleFunc("/api/summary", srv.HandleSummary)
 	mux.HandleFunc("/api/pairs", srv.HandlePairs)
+	mux.HandleFunc("/api/market/tickers", srv.HandleMarketTickers)
+	mux.HandleFunc("/api/market/candles", srv.HandleMarketCandles)
 
 	// Serve React App and static assets
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

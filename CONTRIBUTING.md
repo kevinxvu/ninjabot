@@ -29,6 +29,7 @@ This project and everyone participating in it is governed by our [Code of Conduc
 ### Prerequisites
 
 - **Go 1.18 or higher** - [Download Go](https://golang.org/dl/)
+- **Node.js & npm** (for UI development) - [Download Node.js](https://nodejs.org/)
 - **Git** - [Download Git](https://git-scm.com/downloads)
 - **Make** (optional, but recommended)
 
@@ -50,7 +51,11 @@ This project and everyone participating in it is governed by our [Code of Conduc
 3. **Install dependencies:**
 
    ```bash
+   # Go dependencies
    go mod download
+   
+   # UI dependencies
+   make ui-install
    ```
 
 4. **Verify your setup:**

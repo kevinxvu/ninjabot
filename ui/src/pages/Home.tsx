@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Layout } from '../components/Layout';
 import { MultiSelectPairs } from '../components/MultiSelectPairs';
+import { Settings2, Activity, Play } from 'lucide-react';
 
 export function Home() {
   const navigate = useNavigate();
@@ -56,8 +58,6 @@ export function Home() {
     setLoading(true);
     setError(null);
 
-    // Ensure numeric fields are actually numbers before sending to the backend.
-    // This is especially important if values were loaded from old localStorage strings.
     const payload = {
       ...formData,
       days: Number(formData.days),
@@ -87,7 +87,6 @@ export function Home() {
         throw new Error(data.error || 'Unknown server error');
       }
 
-      // Save valid config
       localStorage.setItem('ninjabot_backtest_config', JSON.stringify(payload));
 
       if (data.pairs && data.pairs.length > 0) {
@@ -101,35 +100,48 @@ export function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-secondary)] py-8 px-4 flex items-center justify-center">
+    <Layout>
+      <div className="flex items-center justify-center py-12">
       <div className="card">
-        <header className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-2">TradingBot</h1>
-          <p className="text-[var(--text-secondary)]">Backtest Configuration</p>
+        <header className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-lg bg-[var(--brand-accent)] text-white flex items-center justify-center shadow-sm">
+              <Activity size={24} strokeWidth={2} />
+            </div>
+            <div>
+              <h1 className="text-2xl heading-style text-[var(--text-primary)]">New Backtest</h1>
+              <p className="text-sm text-[var(--text-secondary)]">Configure parameters for historical simulation</p>
+            </div>
+          </div>
         </header>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Section: Environment */}
+          <div className="space-y-5">
+            <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-2">
+              <Settings2 size={16} className="text-[var(--text-secondary)]" />
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] uppercase tracking-wide">Environment</h2>
+            </div>
+
             <div className="z-20 relative">
-              <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">
-                Trading Pairs <span className="text-[var(--text-tertiary)] lowercase tracking-normal">(max 5 pairs)</span>
+              <label className="label-style">
+                Trading Pairs <span className="text-[var(--text-tertiary)] lowercase tracking-normal">(max 5)</span>
               </label>
               <MultiSelectPairs
                 value={formData.pairs}
                 maxPairs={5}
                 onChange={(newPairs) => setFormData(prev => ({ ...prev, pairs: newPairs }))}
               />
-              <p className="text-xs text-[var(--text-secondary)] mt-1">Uses Binance public API — no API key needed.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Timeframe</label>
+                <label className="label-style">Timeframe</label>
                 <select
                   name="timeframe"
                   value={formData.timeframe}
                   onChange={handleChange}
-                  className="input-field disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="input-field"
                   disabled={isTimeframeDisabled}
                 >
                   <option value="15m">15 minutes</option>
@@ -144,7 +156,7 @@ export function Home() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">History (days)</label>
+                <label className="label-style">History (days)</label>
                 <input
                   name="days"
                   type="number"
@@ -159,25 +171,32 @@ export function Home() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Initial Capital (USDT)</label>
-              <input
-                name="initial_capital"
-                type="number"
-                value={formData.initial_capital}
-                onChange={handleChange}
-                min="100"
-                step="100"
-                className="input-field"
-                required
-              />
+              <label className="label-style">Initial Capital (USDT)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] font-medium">$</span>
+                <input
+                  name="initial_capital"
+                  type="number"
+                  value={formData.initial_capital}
+                  onChange={handleChange}
+                  min="100"
+                  step="100"
+                  className="input-field pl-8"
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Section: Strategy */}
+          <div className="space-y-5">
+            <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-2">
+              <Activity size={16} className="text-[var(--text-secondary)]" />
+              <h2 className="text-sm font-semibold text-[var(--text-primary)] uppercase tracking-wide">Strategy Engine</h2>
             </div>
 
-            <hr className="border-[var(--border-color)] my-6" />
-
-            <div className="text-sm font-bold uppercase tracking-wider text-[#8b5cf6] mb-2 mt-4">Strategy Parameters</div>
-
             <div>
-              <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Strategy</label>
+              <label className="label-style">Algorithm</label>
               <select
                 name="strategy"
                 value={formData.strategy}
@@ -193,11 +212,11 @@ export function Home() {
             </div>
 
             {/* Strategy Parameters */}
-            <div className="bg-[var(--bg-tertiary)] p-4 rounded-lg">
+            <div className="bg-[var(--bg-tertiary)] p-5 rounded-xl border border-[var(--border-color)]">
               {formData.strategy === 'emacross' && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Fast Period (EMA)</label>
+                    <label className="label-style">Fast Period (EMA)</label>
                     <input
                       name="fast_period"
                       type="number"
@@ -205,13 +224,13 @@ export function Home() {
                       onChange={handleChange}
                       min="2"
                       max="100"
-                      className="input-field"
+                      className="input-field bg-[var(--bg-primary)]"
                       required
                     />
-                    <p className="text-xs text-[var(--text-secondary)] mt-1">Buy when EMA crosses above SMA.</p>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-2 leading-tight">Buy when EMA crosses above SMA.</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Slow Period (SMA)</label>
+                    <label className="label-style">Slow Period (SMA)</label>
                     <input
                       name="slow_period"
                       type="number"
@@ -219,18 +238,18 @@ export function Home() {
                       onChange={handleChange}
                       min="3"
                       max="200"
-                      className="input-field"
+                      className="input-field bg-[var(--bg-primary)]"
                       required
                     />
-                    <p className="text-xs text-[var(--text-secondary)] mt-1">Sell when EMA crosses below SMA.</p>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-2 leading-tight">Sell when EMA crosses below SMA.</p>
                   </div>
                 </div>
               )}
 
               {formData.strategy === 'dca' && (
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Interval (Days)</label>
+                    <label className="label-style">Interval (Days)</label>
                     <input
                       name="dca_interval"
                       type="number"
@@ -238,76 +257,70 @@ export function Home() {
                       onChange={handleChange}
                       min="1"
                       max="365"
-                      className="input-field"
+                      className="input-field bg-[var(--bg-primary)]"
                       required
                     />
-                    <p className="text-xs text-[var(--text-secondary)] mt-1">Buy every N days. Timeframe is fixed to 1d.</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1 uppercase tracking-wider text-[var(--text-secondary)]">Buy Amount (USDT)</label>
-                    <input
-                      name="dca_buy_amount"
-                      type="number"
-                      value={formData.dca_buy_amount}
-                      onChange={handleChange}
-                      min="10"
-                      step="10"
-                      className="input-field"
-                      required
-                    />
-                    <p className="text-xs text-[var(--text-secondary)] mt-1">Fixed amount to invest each time.</p>
+                    <label className="label-style">Buy Amount (USDT)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] font-medium">$</span>
+                      <input
+                        name="dca_buy_amount"
+                        type="number"
+                        value={formData.dca_buy_amount}
+                        onChange={handleChange}
+                        min="10"
+                        step="10"
+                        className="input-field pl-8 bg-[var(--bg-primary)]"
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
               )}
 
-              {formData.strategy === 'ocosell' && (
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Uses Stochastic Oscillator for entry and OCO orders for exit. No extra parameters required. Timeframe is fixed to 1d.
-                </p>
-              )}
-
-              {formData.strategy === 'trailingstop' && (
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Uses EMA Crossover with trailing stop for exits. No extra parameters required. Timeframe is fixed to 4h.
-                </p>
-              )}
-
-              {formData.strategy === 'turtle' && (
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Turtle trading strategy using 40-period High and 20-period Low. No extra parameters required. Timeframe is fixed to 4h.
-                </p>
+              {['ocosell', 'trailingstop', 'turtle'].includes(formData.strategy) && (
+                <div className="flex items-start gap-3">
+                  <div className="text-[var(--brand-accent)] mt-0.5">
+                    <Activity size={16} />
+                  </div>
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                    {formData.strategy === 'ocosell' && 'Uses Stochastic Oscillator for entry and OCO orders for exit. No extra parameters required. Timeframe is fixed to 1d.'}
+                    {formData.strategy === 'trailingstop' && 'Uses EMA Crossover with trailing stop for exits. No extra parameters required. Timeframe is fixed to 4h.'}
+                    {formData.strategy === 'turtle' && 'Turtle trading strategy using 40-period High and 20-period Low. No extra parameters required. Timeframe is fixed to 4h.'}
+                  </p>
+                </div>
               )}
             </div>
           </div>
 
-          {error && (
-            <div className="p-4 bg-[var(--error-bg)] text-[var(--error-color)] border border-[var(--error-color)] border-opacity-40 rounded-lg text-sm font-medium">
-              ⚠ {error}
-            </div>
-          )}
-
-          {loading && !error && (
-            <div className="p-4 bg-[var(--success-bg)] text-[var(--brand-color)] border border-[var(--brand-color)] border-opacity-35 rounded-lg text-sm font-medium">
-              Fetching candles from Binance and running simulation. This may take a few seconds…
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn-primary flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Running Backtest...
-              </>
-            ) : (
-              'Run Backtest'
+          <div className="pt-4">
+            {error && (
+              <div className="mb-4 p-4 bg-[var(--error-bg)] text-[var(--error-color)] rounded-lg text-sm flex items-center gap-2">
+                <span className="font-bold">Error:</span> {error}
+              </div>
             )}
-          </button>
+
+            {loading && !error && (
+              <div className="mb-4 p-4 bg-[var(--bg-tertiary)] border border-[var(--border-color)] text-[var(--text-primary)] rounded-lg text-sm flex flex-col items-center justify-center gap-3 text-center">
+                <div className="spinner w-6 h-6 border-2"></div>
+                <span className="font-medium text-[var(--text-secondary)]">Analyzing historical data & executing strategy...</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary flex items-center justify-center gap-2 h-12"
+            >
+              {!loading && <Play size={18} fill="currentColor" />}
+              {loading ? 'Processing...' : 'Run Simulation'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
+    </Layout>
   );
 }

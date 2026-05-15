@@ -1,14 +1,24 @@
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Home } from './pages/Home';
 import { Chart } from './pages/Chart';
+import { Dashboard } from './pages/Dashboard';
 import './index.css';
 
 function App() {
   return (
     <HashRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
+        {/* Set Dashboard as the default route */}
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/backtesting" element={<Home />} />
         <Route path="/chart" element={<Chart />} />
+        {/* Redirect root to dashboard */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        
+        {/* Placeholder routes for the sidebar menu items */}
+        <Route path="/futuremarket" element={<Dashboard />} />
+        <Route path="/paperwallet" element={<Dashboard />} />
+        <Route path="/spotmarket" element={<Dashboard />} />
       </Routes>
     </HashRouter>
   );

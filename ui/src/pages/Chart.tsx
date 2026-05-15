@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import ReactPlotly from 'react-plotly.js';
+import { Layout } from '../components/Layout';
 
 const Plot = (ReactPlotly as any).default || ReactPlotly;
 
@@ -748,10 +749,10 @@ export function Chart() {
     const recentOrders = stats.allOrders.slice(-50).reverse();
 
     return (
-      <div className="bg-[var(--bg-primary)] p-4 rounded-xl border border-[var(--border-color)] shadow-sm overflow-x-auto">
-        <h2 className="text-lg font-bold mb-4">Recent Trades</h2>
+      <div className="bg-[var(--bg-primary)] p-5 rounded-xl border border-[var(--border-color)] shadow-[var(--input-shadow)] overflow-x-auto mt-6">
+        <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">Recent Trades</h2>
         <table className="w-full text-sm text-left">
-          <thead className="text-xs text-[var(--text-secondary)] uppercase bg-[var(--bg-secondary)]">
+          <thead className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider bg-[var(--bg-secondary)] border-b border-t border-[var(--border-color)]">
             <tr>
               <th className="px-4 py-3">Time</th>
               <th className="px-4 py-3">Side</th>
@@ -764,27 +765,27 @@ export function Chart() {
           </thead>
           <tbody>
             {recentOrders.map((order: any, idx: number) => (
-              <tr key={idx} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)]">
-                <td className="px-4 py-3">{new Date(order.time).toLocaleString()}</td>
+              <tr key={idx} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors">
+                <td className="px-4 py-3 text-[var(--text-secondary)] font-medium tabular-nums">{new Date(order.time).toLocaleString()}</td>
                 <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    order.side === BUY_SIDE ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'
+                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
+                    order.side === BUY_SIDE ? 'bg-[var(--success-bg)] text-[var(--success-color)]' : 'bg-[var(--error-bg)] text-[var(--error-color)]'
                   }`}>
                     {order.side}
                   </span>
                 </td>
-                <td className="px-4 py-3">{order.type}</td>
-                <td className="px-4 py-3">{formatNumber(order.price, 2)}</td>
-                <td className="px-4 py-3">{formatNumber(order.quantity, 6)}</td>
-                <td className="px-4 py-3">{formatNumber(order.price * order.quantity, 2)}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3 font-medium">{order.type}</td>
+                <td className="px-4 py-3 tabular-nums">${formatNumber(order.price, 2)}</td>
+                <td className="px-4 py-3 tabular-nums">{formatNumber(order.quantity, 6)}</td>
+                <td className="px-4 py-3 tabular-nums font-medium">${formatNumber(order.price * order.quantity, 2)}</td>
+                <td className="px-4 py-3 tabular-nums">
                   {order.profit !== undefined ? (
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      order.profit >= 0 ? 'bg-emerald-500/20 text-emerald-500' : 'bg-red-500/20 text-red-500'
+                    <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                      order.profit >= 0 ? 'bg-[var(--success-bg)] text-[var(--success-color)]' : 'bg-[var(--error-bg)] text-[var(--error-color)]'
                     }`}>
                       {formatPercent(order.profit)}
                     </span>
-                  ) : "-"}
+                  ) : <span className="text-[var(--text-tertiary)]">-</span>}
                 </td>
               </tr>
             ))}
@@ -1011,12 +1012,7 @@ export function Chart() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg-secondary)] text-[var(--text-primary)]">
-      <header className="bg-[var(--bg-primary)] border-b border-[var(--border-color)] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <Link to="/" className="text-xl font-bold flex items-center gap-2">
-          TradingBot
-        </Link>
-
+    <Layout headerChildren={<div className="flex items-center gap-4 ml-4">
         <div className="flex gap-2">
           {summary?.pairs?.map((p: any) => (
             <Link
@@ -1032,16 +1028,16 @@ export function Chart() {
             </Link>
           ))}
         </div>
-
         <a
           href={`/history?pair=${currentPair}`}
           className="px-4 py-2 bg-[var(--bg-tertiary)] rounded-md font-medium hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2"
         >
           📊 Export History
         </a>
-      </header>
+      </div>}>
+      
 
-      <main className="p-6 max-w-[1600px] mx-auto space-y-6">
+      <div className="max-w-[1600px] mx-auto space-y-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <div className="spinner"></div>
@@ -1056,25 +1052,28 @@ export function Chart() {
             {renderStatsGrid()}
 
             {/* Main Chart */}
-            <div className="bg-[var(--bg-primary)] p-4 rounded-xl border border-[var(--border-color)] shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold">Price Action & Orders</h2>
+            <div className="bg-[var(--bg-primary)] p-5 rounded-xl border border-[var(--border-color)] shadow-[var(--input-shadow)] mt-6">
+              <div className="flex justify-between items-center mb-6 border-b border-[var(--border-color)] pb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-[var(--text-primary)]">Price Action & Execution</h2>
+                  <p className="text-sm text-[var(--text-secondary)] mt-1">Interactive chart with indicators and order history</p>
+                </div>
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setShowIndicators(!showIndicators)}
-                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${showIndicators ? 'bg-[var(--brand-color)] text-white' : 'bg-[var(--bg-tertiary)]'}`}
+                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showIndicators ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
                   >
                     Indicators
                   </button>
                   <button
                     onClick={() => setShowVolume(!showVolume)}
-                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${showVolume ? 'bg-[var(--brand-color)] text-white' : 'bg-[var(--bg-tertiary)]'}`}
+                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showVolume ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
                   >
                     Volume
                   </button>
                   <button
                     onClick={() => setShowSubIndicators(!showSubIndicators)}
-                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${showSubIndicators ? 'bg-[var(--brand-color)] text-white' : 'bg-[var(--bg-tertiary)]'}`}
+                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showSubIndicators ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
                   >
                     Sub-Indicators
                   </button>
@@ -1104,20 +1103,20 @@ export function Chart() {
             {renderBacktestSummary()}
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </Layout>
   );
 }
 
 function StatCard({ title, value, change, isPositive }: { title: string, value: string | number, change?: string, isPositive?: boolean }) {
   return (
-    <div className="bg-[var(--bg-primary)] p-4 rounded-xl border border-[var(--border-color)] shadow-sm">
-      <h3 className="text-xs text-[var(--text-secondary)] font-semibold uppercase tracking-wider mb-2">{title}</h3>
-      <p className={`text-2xl font-bold ${isPositive !== undefined ? (isPositive ? 'text-[var(--success-color)]' : 'text-[var(--error-color)]') : ''}`}>
+    <div className="bg-[var(--bg-primary)] p-5 rounded-xl border border-[var(--border-color)] shadow-[var(--input-shadow)] flex flex-col justify-between">
+      <h3 className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">{title}</h3>
+      <p className="text-2xl font-bold text-[var(--text-primary)] mb-1 tracking-tight">
         {value}
       </p>
       {change && (
-        <div className="text-sm mt-1 text-[var(--text-secondary)]">
+        <div className={`text-xs font-medium ${isPositive === true ? 'text-[var(--success-color)]' : isPositive === false ? 'text-[var(--error-color)]' : 'text-[var(--text-tertiary)]'}`}>
           {change}
         </div>
       )}

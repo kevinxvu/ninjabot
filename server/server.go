@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/plot"
 )
 
@@ -15,10 +16,12 @@ type Server struct {
 	running     bool
 	chart       *plot.Chart
 	summaryJSON json.RawMessage
+	exc         *exchange.Binance
 }
 
 func NewServer(chart *plot.Chart) (*Server, error) {
-	return &Server{chart: chart}, nil
+	exc, _ := exchange.NewBinance(context.Background())
+	return &Server{chart: chart, exc: exc}, nil
 }
 
 func (s *Server) Start(ctx context.Context, port int) error {

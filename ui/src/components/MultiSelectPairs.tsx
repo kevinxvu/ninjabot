@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, X, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { Search, X, CheckSquare, Loader2 } from 'lucide-react';
 
 interface MultiSelectPairsProps {
   value: string; // Comma separated string e.g. "BTCUSDT,ETHUSDT"
@@ -108,22 +108,22 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
   return (
     <div className="relative w-full" ref={wrapperRef}>
       <div
-        className="input-field min-h-[42px] flex flex-wrap gap-2 items-center cursor-pointer pb-1"
+        className="input-field min-h-[44px] flex flex-wrap gap-2 items-center cursor-pointer pb-1.5 pt-1.5 transition-all bg-[var(--bg-primary)] hover:border-[#cbd5e1]"
         onClick={() => setIsOpen(true)}
       >
         {selectedPairs.length === 0 && (
-          <span className="text-[var(--text-tertiary)] py-1 pl-1">Select pairs...</span>
+          <span className="text-[var(--text-tertiary)] text-sm py-1 pl-1">Select pairs...</span>
         )}
 
         {selectedPairs.map(pair => (
           <span
             key={pair}
-            className="bg-[var(--brand-color)] text-white text-xs px-2 py-1 rounded-md flex items-center gap-1"
+            className="bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-[var(--border-color)] text-[11px] font-semibold tracking-wide px-2.5 py-1 rounded flex items-center gap-1.5 shadow-sm transition-colors hover:bg-[var(--border-color)]"
           >
             {pair}
             <X
-              size={14}
-              className="cursor-pointer hover:opacity-75"
+              size={12}
+              className="cursor-pointer text-[var(--text-secondary)] hover:text-[var(--error-color)]"
               onClick={(e) => removePair(pair, e)}
             />
           </span>
@@ -131,12 +131,12 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
       </div>
 
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-lg shadow-lg overflow-hidden max-h-60 flex flex-col">
-          <div className="p-2 border-b border-[var(--border-color)] flex items-center gap-2 bg-[var(--bg-secondary)] sticky top-0">
+        <div className="absolute z-10 w-full mt-2 bg-[var(--bg-primary)] border border-[var(--border-color)] rounded-xl shadow-lg overflow-hidden max-h-60 flex flex-col">
+          <div className="p-3 border-b border-[var(--border-color)] flex items-center gap-2 bg-[var(--bg-primary)] sticky top-0">
             <Search size={16} className="text-[var(--text-tertiary)]" />
             <input
               type="text"
-              className="w-full bg-transparent outline-none text-sm text-[var(--text-primary)]"
+              className="w-full bg-transparent outline-none text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
               placeholder="Search pairs..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -158,12 +158,16 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
                   return (
                     <div
                       key={pair}
-                      className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--bg-secondary)] rounded text-[var(--text-primary)] ${
-                        !isSelected && maxPairs && selectedPairs.length >= maxPairs ? 'opacity-50 cursor-not-allowed' : ''
+                      className={`flex items-center gap-3 px-3 py-2 text-sm font-medium cursor-pointer rounded-lg transition-colors ${
+                        isSelected ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)]' : 'hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+                      } ${
+                        !isSelected && maxPairs && selectedPairs.length >= maxPairs ? 'opacity-50 cursor-not-allowed hover:bg-transparent' : ''
                       }`}
                       onClick={() => togglePair(pair)}
                     >
-                      {isSelected ? <CheckSquare size={16} className="text-[var(--brand-color)]"/> : <Square size={16} className="text-[var(--text-tertiary)]"/>}
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-[var(--brand-accent)] border-[var(--brand-accent)]' : 'border-[var(--border-color)] bg-white'}`}>
+                        {isSelected && <CheckSquare size={12} strokeWidth={3} className="text-white bg-[var(--brand-accent)] rounded-sm" />}
+                      </div>
                       {pair}
                     </div>
                   );

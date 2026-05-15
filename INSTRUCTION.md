@@ -46,7 +46,7 @@
 | SQL / ORM | [`gorm`](https://gorm.io) + SQLite (`glebarez/sqlite`) |
 | Logging | [`logrus`](https://github.com/sirupsen/logrus) |
 | Telegram Notifications | [`telebot.v2`](https://github.com/tucnak/telebot) |
-| Charting | Internal `plot` package + `ui` package (HTML/JS/CSS, uses `go:embed`) |
+| Charting | Internal `plot` package + `ui` package (React, Vite, Tailwind CSS, TypeScript bundled via `go:embed`) |
 | Mocking | [`mockery/v2`](https://github.com/vektra/mockery) |
 | Testing | [`testify`](https://github.com/stretchr/testify) |
 
@@ -75,10 +75,7 @@ go version
 ```
 ninjabot/
 ├── cmd/
-│   ├── main.go            # Web UI entry point
-│   ├── server.go          # HTTP server for Web UI backtesting
-│   ├── summary.go         # Summary and KPIs calculation for backtesting
-│   └── types.go           # HTTP request/response types
+│   └── main.go            # Web UI entry point
 ├── download/              # Downloader logic used by the Web UI
 ├── examples/
 │   ├── backtesting/       # Example: run strategy on historical CSV data
@@ -91,13 +88,19 @@ ninjabot/
 │   ├── csvfeed.go         # CSV-backed data feed for backtesting
 │   ├── paperwallet.go     # Simulated wallet for paper trading
 │   └── exchange.go        # Shared exchange utilities (pair splitting, data feed)
-├── indicator/             # Technical indicator wrappers (EMA, SMA, Supertrend, etc.)
+├── indicator/             # Technical indicator wrappers (EMA, SMA, MACD, Stochastic, CCI, Supertrend, etc.)
 ├── model/                 # Core data models: Candle, Order, Dataframe, Series, Settings
 ├── notification/          # Notification adapters (Telegram, Email)
 ├── order/                 # Order controller and order feed/pub-sub
 ├── plot/
 │   ├── chart.go           # Chart builder; Reset/SetStrategy/SetPaperWallet/Register for reuse
 │   └── indicator/         # Plot-specific indicator renderers (RSI, MACD, Stochastic, CCI, Bollinger, etc.)
+├── server/
+│   ├── server.go          # HTTP server initialization and lifecycle
+│   ├── handlers.go        # API endpoints (backtest, summary, data, etc.)
+│   ├── router.go          # Route definitions
+│   ├── summary.go         # Summary and KPIs calculation for backtesting
+│   └── types.go           # HTTP request/response types
 ├── service/               # Core interfaces (Exchange, Broker, Notifier, Feeder, Telegram)
 ├── storage/               # Storage backends (BuntDB, SQL/SQLite)
 ├── strategy/              # Strategy interface definition and controller
@@ -109,13 +112,15 @@ ninjabot/
 │   ├── scheduler.go       # Cron-like scheduler
 │   └── trailing.go        # Trailing stop utility
 ├── ui/
-│   ├── assets/            # CSS and JS files for the web interface
-│   ├── template/          # HTML templates (chart.html, form.html)
-│   └── ui.go              # Embeds the assets and templates via go:embed
+│   ├── src/               # React frontend source code (components, pages, styles)
+│   ├── dist/              # Built frontend assets (HTML, JS, CSS)
+│   ├── package.json       # Node.js dependencies
+│   ├── vite.config.ts     # Vite bundler configuration
+│   └── ui.go              # Embeds the built dist/ folder via go:embed
 ├── ninjabot.go            # Main bot struct, NewBot() constructor, bot.Run()
 ├── types.go               # Re-exported types (Settings, SideType, etc.)
 ├── go.mod / go.sum        # Go module definition
-└── Makefile               # Shortcuts: test, lint, generate, release
+└── Makefile               # Shortcuts: test, lint, generate, release, ui-build
 ```
 
 ### Key entry points at a glance
@@ -363,6 +368,15 @@ make run-futures API_KEY=... API_SECRET=...
 ## Web Backtest UI
 
 `cmd/main.go` is a self-contained HTTP server that exposes a browser form, runs a full backtest in-process, and serves results on the chart — no terminal interaction required after startup.
+
+### UI Design System & Style Guide
+
+The React frontend (`ui/`) strictly follows a **Payment Gateway / Fintech Minimalism** design system (inspired by Stripe, Vercel, and PayPal). When modifying or adding new UI components, adhere to these principles:
+
+- **Typography:** Inter font, utilizing `heading-style` (tight tracking, bold) for titles and `label-style` (small, all-caps, tracking-wider) for form labels and table headers.
+- **Colors:** Deep Slate/Indigo (`var(--brand-accent)`, `#635bff`) for primary trust signals, clean white cards on subtle light-gray (`#f7f9fc`) backgrounds.
+- **Components:** Flat design with very thin borders (`#e2e8f0`), smooth & wide shadows (`var(--input-shadow)` and `var(--card-shadow)`), and softly rounded corners (`rounded-xl` for cards, `rounded-md` for buttons/badges).
+- **Status Indicators:** Avoid harsh red/green; use pastel/muted backgrounds with bold text for badges (e.g., `bg-emerald-50 text-emerald-600` for profits).
 
 ### How to run
 

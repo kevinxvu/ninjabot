@@ -336,3 +336,44 @@ func (s *Server) runBacktest(ctx context.Context, req backtestRequest, pairs []s
 
 	return nil
 }
+
+func (s *Server) HandleMarketTickers(w http.ResponseWriter, r *http.Request) {
+	pairsParam := r.URL.Query().Get("pairs")
+	if pairsParam == "" {
+		pairsParam = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT"
+	}
+	pairs := strings.Split(pairsParam, ",")
+
+	results := make(map[string]float64)
+	for _, pair := range pairs {
+		quote, err := s.exc.LastQuote(r.Context(), pair)
+		if err == nil {
+			results[pair] = quote
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(results)
+}
+
+func (s *Server) HandleMarketCandles(w http.ResponseWriter, r *http.Request) {
+	pair := r.URL.Query().Get("pair")
+	if pair == "" {
+		pair = "BTCUSDT"
+	}
+	timeframe := r.URL.Query().Get("timeframe")
+	if timeframe == "" {
+		timeframe = "1d"
+	}
+
+	limit := 100
+
+	candles, err := s.exc.CandlesByLimit(r.Context(), pair, timeframe, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(candles)
+}

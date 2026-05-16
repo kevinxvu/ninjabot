@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MultiSelectPairs } from '../components/MultiSelectPairs';
 import { Settings2, Activity, Play } from 'lucide-react';
+import api from '../api/client';
 
 export function Home() {
   const navigate = useNavigate();
@@ -75,25 +76,20 @@ export function Home() {
     }
 
     try {
-      const res = await fetch('/api/backtest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Unknown server error');
-      }
-
+      // Use axios through our api client
+      // Note: the interceptor already returns response.data
+      await api.post('/api/backtest', payload);
+      
       localStorage.setItem('ninjabot_backtest_config', JSON.stringify(payload));
-
-      if (data.pairs && data.pairs.length > 0) {
-        navigate(`/chart?pair=${data.pairs[0]}`);
+      
+      const pairsArr = payload.pairs.split(',').map(s => s.trim()).filter(Boolean);
+      if (pairsArr && pairsArr.length > 0) {
+        navigate(`/chart?pair=${pairsArr[0]}`);
+      } else {
+        navigate('/chart');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error: An unknown error occurred');
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Backtest failed');
     } finally {
       setLoading(false);
     }

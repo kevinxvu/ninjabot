@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import ReactPlotly from 'react-plotly.js';
 import { Layout } from '../components/Layout';
+import api from '../api/client';
 
 const Plot = (ReactPlotly as any).default || ReactPlotly;
 
@@ -142,20 +143,19 @@ export function Chart() {
       setLoading(true);
       setError(null);
       try {
-        const [dataRes, summaryRes] = await Promise.all([
-          fetch(`/data?pair=${currentPair}`),
-          fetch('/api/summary')
+        const [chartData, summaryData] = await Promise.all([
+          api.get(`/api/data?pair=${currentPair}`),
+          api.get('/api/summary').catch(() => null) // allow summary to fail silently like before
         ]);
 
-        if (!dataRes.ok) throw new Error('Failed to fetch chart data');
+        if (!chartData) throw new Error('Failed to fetch chart data');
 
-        const chartData = await dataRes.json();
-        setData(chartData);
+        setData(chartData as any);
 
         // Initialize active sub-indicators
-        if (chartData.indicators) {
+        if ((chartData as any).indicators) {
           const initialSet = new Set<string>();
-          chartData.indicators.forEach((ind: any) => {
+          (chartData as any).indicators.forEach((ind: any) => {
             if (!ind.overlay && ind.name.startsWith("RSI")) {
               initialSet.add(ind.name);
             }
@@ -163,9 +163,8 @@ export function Chart() {
           setActiveSubIndicators(initialSet);
         }
 
-        if (summaryRes.ok) {
-          const summaryData = await summaryRes.json();
-          setSummary(summaryData);
+        if (summaryData) {
+          setSummary(summaryData as any);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -1012,32 +1011,36 @@ export function Chart() {
   };
 
   return (
-    <Layout headerChildren={<div className="flex items-center gap-4 ml-4">
-        <div className="flex gap-2">
-          {summary?.pairs?.map((p: any) => (
-            <Link
-              key={p.pair || p}
-              to={`/chart?pair=${p.pair || p}`}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                (p.pair || p) === currentPair
-                  ? 'bg-[var(--brand-color)] text-white'
-                  : 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]'
-              }`}
+    <Layout>
+      <div className="max-w-[1600px] mx-auto space-y-4 -mt-2">
+        <div className="flex items-center justify-between w-full">
+          <div className="flex-1"></div>
+          <div className="flex gap-2 justify-center flex-1">
+            {summary?.pairs?.map((p: any) => (
+              <Link
+                key={p.pair || p}
+                to={`/chart?pair=${p.pair || p}`}
+                className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
+                  (p.pair || p) === currentPair
+                    ? 'bg-[var(--brand-color)] text-white'
+                    : 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]'
+                }`}
+              >
+                {p.pair || p}
+              </Link>
+            ))}
+          </div>
+          <div className="flex-1 flex justify-end">
+            <a
+              href={`/api/history?pair=${currentPair}`}
+              className="bg-[var(--brand-color)] text-white hover:opacity-90 px-4 py-2 rounded-md font-medium transition-opacity flex items-center justify-center gap-2 text-sm shadow-sm"
+              download
             >
-              {p.pair || p}
-            </Link>
-          ))}
+              📊 Export History
+            </a>
+          </div>
         </div>
-        <a
-          href={`/history?pair=${currentPair}`}
-          className="px-4 py-2 bg-[var(--bg-tertiary)] rounded-md font-medium hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2"
-        >
-          📊 Export History
-        </a>
-      </div>}>
-      
 
-      <div className="max-w-[1600px] mx-auto space-y-6">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 gap-4">
             <div className="spinner"></div>

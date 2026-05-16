@@ -6,7 +6,7 @@ toolchain go1.24.3
 
 require (
 	github.com/StudioSol/set v1.0.0
-	github.com/adshao/go-binance/v2 v2.8.8
+	github.com/adshao/go-binance/v2 v2.8.11
 	github.com/aybabtme/uniplot v0.0.0-20151203143629-039c559e5e7e
 	github.com/glebarez/sqlite v1.11.0
 	github.com/jpillora/backoff v1.0.0

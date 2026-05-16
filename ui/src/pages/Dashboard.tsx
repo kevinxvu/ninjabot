@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Layout } from '../components/Layout';
+import api from '../api/client';
 import ReactPlotly from 'react-plotly.js';
 const Plot = (ReactPlotly as any).default || ReactPlotly;
 import { Activity } from 'lucide-react';
@@ -11,50 +12,116 @@ interface TickerData {
 export function Dashboard() {
   const [tickers, setTickers] = useState<TickerData>({});
   const [candles, setCandles] = useState<any[]>([]);
+  const [pairsInfo, setPairsInfo] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [mainPair, setMainPair] = useState('BTCUSDT');
   const [timeframe, setTimeframe] = useState('1d');
+  const [portfolioValue, setPortfolioValue] = useState<number | null>(null);
+  
+  const defaultPairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
+
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    const fetchTickers = async () => {
+    
+    // Gọi API REST lần đầu để tải nến cũ và thông tin pair
+    const fetchInitialData = async () => {
       try {
-        const res = await fetch('/api/market/tickers?pairs=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT');
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          setTickers(data);
-        }
-      } catch (e) {
-        console.error('Failed to fetch tickers', e);
-      }
-    };
+        setLoading(true);
+        // Using axios
+        const [tData, cData, iData, pData] = await Promise.all([
+          api.get(`/api/market/tickers?pairs=${defaultPairs.join(',')}`),
+          api.get(`/api/market/candles?pair=${mainPair}&timeframe=${timeframe}`),
+          api.get(`/api/pairs?pairs=${defaultPairs.join(',')}`),
+          api.get(`/api/market/portfolio`)
+        ]);
 
-    const fetchCandles = async () => {
-      try {
-        const res = await fetch(`/api/market/candles?pair=${mainPair}&timeframe=${timeframe}`);
-        if (res.ok && isMounted) {
-          const data = await res.json();
-          setCandles(data);
+        if (isMounted) {
+          if (tData) {
+            setTickers(tData as unknown as TickerData);
+          }
+          if (cData && Array.isArray(cData)) {
+            setCandles(cData);
+          }
+          if (iData) {
+            setPairsInfo(iData);
+          }
+          if (pData) {
+            const portData = pData as { error?: string, total_value_usdt?: number };
+            if (!portData.error && portData.total_value_usdt !== undefined) {
+              setPortfolioValue(portData.total_value_usdt);
+            }
+          }
         }
       } catch (e) {
-        console.error('Failed to fetch candles', e);
+        console.error('Lỗi khi tải dữ liệu ban đầu:', e);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
 
-    setLoading(true);
-    fetchTickers();
-    fetchCandles();
+    fetchInitialData();
+
+    // Thiết lập Websocket cho Realtime
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/market`;
     
-    const interval = setInterval(() => {
-      fetchTickers();
-      fetchCandles();
-    }, 10000); // Cập nhật realtime mỗi 10s
-    
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log('WS Đã kết nối, gửi yêu cầu theo dõi Nến');
+      ws.send(JSON.stringify({
+        action: 'SUBSCRIBE_CANDLE',
+        pair: mainPair,
+        timeframe: timeframe
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      if (!isMounted) return;
+      
+      try {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'TICKER') {
+          setTickers(prev => ({
+            ...prev,
+            [msg.pair]: msg.price
+          }));
+        } 
+        else if (msg.type === 'CANDLE' && msg.pair === mainPair) {
+          const newCandle = msg.data;
+          
+          setCandles(prev => {
+            if (prev.length === 0) return [newCandle];
+            
+            const lastCandle = prev[prev.length - 1];
+            // Nếu cùng thời gian mở nến -> cập nhật nến hiện tại
+            if (new Date(lastCandle.Time).getTime() === new Date(newCandle.Time).getTime()) {
+              const updated = [...prev];
+              updated[updated.length - 1] = newCandle;
+              return updated;
+            }
+            
+            // Nếu đã sang nến mới
+            return [...prev, newCandle];
+          });
+        }
+      } catch (e) {
+        console.error('Lỗi phân tích WS message:', e);
+      }
+    };
+
+    ws.onclose = () => console.log('WS Bị ngắt kết nối');
+    ws.onerror = (err) => console.error('WS Lỗi:', err);
+
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
   }, [mainPair, timeframe]);
 
@@ -91,16 +158,18 @@ export function Dashboard() {
         <div className="flex-1">
           {/* Ticker Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            {['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'].map(pair => (
+            {defaultPairs.map(pair => (
               <div key={pair} className="bg-[var(--bg-primary)] p-5 rounded-xl border border-[var(--border-color)] shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center font-bold text-xs">
-                      {pair.replace('USDT', '')}
-                    </div>
+                    <img 
+                      src={pairsInfo[pair]?.Logo || `https://assets.coincap.io/assets/icons/${pair.replace('USDT', '').toLowerCase()}@2x.png`}
+                      alt={pair.replace('USDT', '')}
+                      className="w-8 h-8 rounded-full bg-white shadow-sm"
+                    />
                     <div>
                       <h3 className="font-semibold text-sm">{pair.replace('USDT', '-USD')}</h3>
-                      <p className="text-xs text-[var(--text-tertiary)]">{pair.replace('USDT', '')} USD</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">{pairsInfo[pair]?.Asset || pair.replace('USDT', '')} USD</p>
                     </div>
                   </div>
                 </div>
@@ -146,11 +215,12 @@ export function Dashboard() {
                     <div className="spinner w-8 h-8"></div>
                   </div>
                 ) : (
-                  <Plot
+                    <Plot
                     data={[chartData as any]}
                     layout={{
+                      dragmode: 'pan',
                       autosize: true,
-                      margin: { l: 40, r: 40, t: 20, b: 40 },
+                      margin: { l: 40, r: 80, t: 20, b: 40 },
                       paper_bgcolor: 'transparent',
                       plot_bgcolor: 'transparent',
                       uirevision: mainPair + timeframe,
@@ -163,11 +233,47 @@ export function Dashboard() {
                         gridcolor: 'rgba(0,0,0,0.05)',
                         side: 'right'
                       },
-                      showlegend: false
+                      showlegend: false,
+                      shapes: [
+                        {
+                          type: 'line',
+                          xref: 'paper',
+                          x0: 0,
+                          x1: 1,
+                          yref: 'y',
+                          y0: tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0),
+                          y1: tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0),
+                          line: {
+                            color: '#6366f1',
+                            width: 1,
+                            dash: 'dot'
+                          }
+                        }
+                      ],
+                      annotations: [
+                        {
+                          xref: 'paper',
+                          yref: 'y',
+                          x: 1,
+                          y: tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0),
+                          xanchor: 'left',
+                          yanchor: 'middle',
+                          text: formatPrice(tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0)),
+                          showarrow: false,
+                          font: {
+                            color: '#ffffff',
+                            size: 11
+                          },
+                          bgcolor: '#6366f1',
+                          borderpad: 4,
+                          bordercolor: '#6366f1',
+                          borderwidth: 1
+                        }
+                      ]
                     }}
                     useResizeHandler={true}
                     style={{ width: '100%', height: '100%' }}
-                    config={{ displayModeBar: false }}
+                    config={{ responsive: true, scrollZoom: true, displayModeBar: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] }}
                   />
                 )}
               </div>
@@ -178,14 +284,11 @@ export function Dashboard() {
               <div className="bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)] shadow-sm p-5">
                 <div className="flex items-center gap-4 border-b border-[var(--border-color)] pb-4 mb-4">
                   <button className="flex-1 pb-2 border-b-2 border-[var(--brand-accent)] font-semibold text-sm">Balance</button>
-                  <button className="flex-1 pb-2 text-[var(--text-tertiary)] font-medium text-sm">Pending</button>
                 </div>
                 <div>
-                  <h3 className="text-[var(--text-secondary)] text-sm mb-1">Total Balance</h3>
-                  <div className="text-3xl font-bold mb-4">$108,458.98</div>
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <button className="btn-primary py-2 text-sm bg-[var(--brand-accent)] hover:bg-[var(--brand-light)]">Deposit</button>
-                    <button className="btn-primary py-2 text-sm bg-white text-[var(--text-primary)] border border-[var(--border-color)] shadow-none hover:bg-[var(--bg-secondary)]">Withdraw</button>
+                  <h3 className="text-[var(--text-secondary)] text-sm mb-1">My Portfolio</h3>
+                  <div className="text-3xl font-bold mb-4">
+                    {portfolioValue !== null ? formatPrice(portfolioValue) : formatPrice(0)}
                   </div>
                 </div>
               </div>
@@ -195,7 +298,11 @@ export function Dashboard() {
                 <div className="space-y-4">
                   <div className="bg-[var(--bg-secondary)] p-3 rounded-lg flex items-center justify-between border border-[var(--border-color)]">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-500 flex items-center justify-center font-bold text-xs">B</div>
+                      <img 
+                        src={`https://assets.coincap.io/assets/icons/btc@2x.png`}
+                        alt="BTC"
+                        className="w-8 h-8 rounded-full bg-white shadow-sm"
+                      />
                       <span className="font-semibold">BTC</span>
                     </div>
                     <div className="text-right">
@@ -210,7 +317,11 @@ export function Dashboard() {
                   </div>
                   <div className="bg-[var(--bg-secondary)] p-3 rounded-lg flex items-center justify-between border border-[var(--border-color)]">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-bold text-xs">U</div>
+                      <img 
+                        src={`https://assets.coincap.io/assets/icons/usdt@2x.png`}
+                        alt="USDT"
+                        className="w-8 h-8 rounded-full bg-white shadow-sm"
+                      />
                       <span className="font-semibold">USDT</span>
                     </div>
                     <div className="text-right">

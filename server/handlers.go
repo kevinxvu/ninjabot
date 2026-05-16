@@ -130,15 +130,45 @@ func (s *Server) HandleSummary(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// HandlePairs serves the list of all available trading pairs
+// HandlePairs serves trading pair information.
+// - If no "pairs" param is provided: returns { "pairs": ["BTCUSDT", "ETHUSDT", ...] }
+// - If "pairs" param is provided (e.g. ?pairs=BTCUSDT,ETHUSDT): returns detailed mapping: { "BTCUSDT": {"Asset": "BTC", "Quote": "USDT", "Logo": "..."} }
 func (s *Server) HandlePairs(w http.ResponseWriter, r *http.Request) {
-	pairs := exchange.AvailablePairs()
-	sort.Strings(pairs)
-
+	pairsParam := r.URL.Query().Get("pairs")
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "public, max-age=86400") // Cache for 1 day
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{"pairs": pairs}); err != nil {
-		log.Errorf("encode pairs: %v", err)
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+
+	// 1. Trường hợp không truyền param: Trả về danh sách tên Pairs đơn giản từ file đã lọc
+	if pairsParam == "" {
+		var pairs []string
+		s.mu.Lock()
+		for p := range s.pairsData {
+			pairs = append(pairs, p)
+		}
+		s.mu.Unlock()
+		
+		sort.Strings(pairs)
+
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"pairs": pairs}); err != nil {
+			log.Errorf("encode pairs: %v", err)
+		}
+		return
+	}
+
+	// 2. Trường hợp truyền param: Trả về Object chi tiết theo tên Pair được yêu cầu
+	pairs := strings.Split(pairsParam, ",")
+	result := make(map[string]interface{})
+
+	s.mu.Lock()
+	for _, p := range pairs {
+		if data, ok := s.pairsData[p]; ok {
+			result[p] = data
+		}
+	}
+	s.mu.Unlock()
+
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		log.Errorf("encode pairs info: %v", err)
 	}
 }
 
@@ -376,4 +406,47 @@ func (s *Server) HandleMarketCandles(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(candles)
+}
+
+func (s *Server) HandleMarketPortfolio(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	acc, err := s.exc.Account()
+	if err != nil {
+		json.NewEncoder(w).Encode(PortfolioResponse{Error: err.Error()})
+		return
+	}
+
+	totalUSDT := 0.0
+	assets := make([]assetBalance, 0)
+
+	for _, bal := range acc.Balances {
+		amount := bal.Free + bal.Lock
+		if amount <= 0 {
+			continue
+		}
+
+		if bal.Asset == "USDT" {
+			totalUSDT += amount
+			assets = append(assets, assetBalance{Asset: "USDT", ValueUSDT: amount})
+			continue
+		}
+
+		// Use LastQuote to get the current price for the asset
+		pair := bal.Asset + "USDT"
+		quote, err := s.exc.LastQuote(r.Context(), pair)
+		if err == nil && quote > 0 {
+			valueUSDT := amount * quote
+			// Only include assets with a reasonable value (e.g. > $1)
+			if valueUSDT > 1.0 {
+				totalUSDT += valueUSDT
+				assets = append(assets, assetBalance{Asset: bal.Asset, ValueUSDT: valueUSDT})
+			}
+		}
+	}
+
+	json.NewEncoder(w).Encode(PortfolioResponse{
+		TotalValueUSDT: totalUSDT,
+		Assets:         assets,
+	})
 }

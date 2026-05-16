@@ -21,14 +21,16 @@ func SetupRouter(srv *Server) *http.ServeMux {
 	fileServer := http.FileServer(http.FS(distFS))
 
 	// API routes
-	mux.HandleFunc("/health", srv.HandleHealth)
-	mux.HandleFunc("/history", srv.HandleTradingHistoryData)
-	mux.HandleFunc("/data", srv.HandleChartData)
+	mux.HandleFunc("/api/health", srv.HandleHealth)
+	mux.HandleFunc("/api/history", srv.HandleTradingHistoryData)
+	mux.HandleFunc("/api/data", srv.HandleChartData)
 	mux.HandleFunc("/api/backtest", srv.HandleBacktest)
 	mux.HandleFunc("/api/summary", srv.HandleSummary)
 	mux.HandleFunc("/api/pairs", srv.HandlePairs)
 	mux.HandleFunc("/api/market/tickers", srv.HandleMarketTickers)
 	mux.HandleFunc("/api/market/candles", srv.HandleMarketCandles)
+	mux.HandleFunc("/api/market/portfolio", srv.HandleMarketPortfolio)
+	mux.HandleFunc("/ws/market", srv.HandleMarketWebsocket)
 
 	// Serve React App and static assets
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, CheckSquare, Loader2 } from 'lucide-react';
+import api from '../api/client';
 
 interface MultiSelectPairsProps {
   value: string; // Comma separated string e.g. "BTCUSDT,ETHUSDT"
@@ -32,12 +33,9 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
     async function fetchPairs() {
       setLoading(true);
       try {
-        const res = await fetch('/api/pairs');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.pairs && Array.isArray(data.pairs)) {
-            setAvailablePairs(data.pairs);
-          }
+        const data = await api.get('/api/pairs') as { pairs: string[] };
+        if (data && data.pairs && Array.isArray(data.pairs)) {
+          setAvailablePairs(data.pairs);
         }
       } catch (err) {
         console.error('Failed to fetch trading pairs', err);

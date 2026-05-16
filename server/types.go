@@ -75,3 +75,10 @@ type assetBalance struct {
 	Asset     string  `json:"asset"`
 	ValueUSDT float64 `json:"value_usdt"`
 }
+
+type PortfolioResponse struct {
+	TotalValueUSDT float64        `json:"total_value_usdt"`
+	Assets         []assetBalance `json:"assets,omitempty"`
+	Error          string         `json:"error,omitempty"`
+}
+

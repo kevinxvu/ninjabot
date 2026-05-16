@@ -24,7 +24,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	srv, err := server.NewServer(chart)
+	srv, err := server.NewServer(chart, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

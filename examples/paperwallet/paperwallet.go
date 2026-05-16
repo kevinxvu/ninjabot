@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
-	"strconv"
 
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/plot/indicator"
@@ -20,9 +18,8 @@ import (
 // A peperwallet is a wallet that is not connected to any exchange, it is a simulation with live data (realtime)
 func main() {
 	var (
-		ctx             = context.Background()
-		telegramToken   = os.Getenv("TELEGRAM_TOKEN")
-		telegramUser, _ = strconv.Atoi(os.Getenv("TELEGRAM_USER"))
+		ctx = context.Background()
+		cfg = server.LoadConfig()
 	)
 
 	settings := ninjabot.Settings{
@@ -33,9 +30,9 @@ func main() {
 			"LTCUSDT",
 		},
 		Telegram: ninjabot.TelegramSettings{
-			Enabled: telegramToken != "" && telegramUser != 0,
-			Token:   telegramToken,
-			Users:   []int{telegramUser},
+			Enabled: cfg.TelegramToken != "" && cfg.TelegramUser != 0,
+			Token:   cfg.TelegramToken,
+			Users:   []int{cfg.TelegramUser},
 		},
 	}
 

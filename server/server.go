@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
@@ -17,11 +18,33 @@ type Server struct {
 	chart       *plot.Chart
 	summaryJSON json.RawMessage
 	exc         *exchange.Binance
+	wsManager   *MarketWebsocketManager
+	pairsData   map[string]interface{}
 }
 
-func NewServer(chart *plot.Chart) (*Server, error) {
-	exc, _ := exchange.NewBinance(context.Background())
-	return &Server{chart: chart, exc: exc}, nil
+func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
+	exc, _ := exchange.NewBinance(context.Background(), exchange.WithBinanceCredentials(cfg.APIKey, cfg.APISecret))
+	wsManager := NewMarketWebsocketManager()
+
+	// Khởi chạy theo dõi Ticker mặc định
+	defaultPairs := []string{"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"}
+	go wsManager.StartTickerSubscription(defaultPairs)
+
+	// Tải dữ liệu các cặp giao dịch vào memory
+	pairsData := make(map[string]interface{})
+	fileData, err := os.ReadFile("exchange/pairs.json")
+	if err == nil {
+		json.Unmarshal(fileData, &pairsData)
+	} else {
+		fmt.Printf("Warning: Could not load pairs.json: %v\n", err)
+	}
+
+	return &Server{
+		chart:     chart,
+		exc:       exc,
+		wsManager: wsManager,
+		pairsData: pairsData,
+	}, nil
 }
 
 func (s *Server) Start(ctx context.Context, port int) error {

@@ -106,9 +106,27 @@ func NewPaperWallet(ctx context.Context, baseCoin string, options ...PaperWallet
 		option(&wallet)
 	}
 
-	wallet.initialValue = wallet.assets[wallet.baseCoin].Free
+	if wallet.assets[wallet.baseCoin] != nil {
+		wallet.initialValue = wallet.assets[wallet.baseCoin].Free
+	} else {
+		// Calculate initial value from all assets if base coin is not the initial asset
+		var total float64
+		for _, info := range wallet.assets {
+			// For simplicity at initialization, just use the raw amount if it's not base coin.
+			// True equity in base coin will be calculated on the first candle update.
+			total += info.Free
+		}
+		wallet.initialValue = total
+	}
+	
 	log.Info("[SETUP] Using paper wallet")
-	log.Infof("[SETUP] Initial Portfolio = %f %s", wallet.initialValue, wallet.baseCoin)
+	
+	// Log all initial assets
+	for asset, info := range wallet.assets {
+		if info.Free > 0 {
+			log.Infof("[SETUP] Initial Asset Configured = %f %s", info.Free, asset)
+		}
+	}
 
 	return &wallet
 }
@@ -211,7 +229,12 @@ func (p *PaperWallet) Summary() {
 	}
 
 	avgMarketChange := marketChange / float64(len(p.lastCandle))
-	baseCoinValue := p.assets[p.baseCoin].Free + p.assets[p.baseCoin].Lock
+	
+	var baseCoinValue float64
+	if p.assets[p.baseCoin] != nil {
+		baseCoinValue = p.assets[p.baseCoin].Free + p.assets[p.baseCoin].Lock
+	}
+	
 	profit := total + baseCoinValue - p.initialValue
 	fmt.Printf("%.4f %s\n", baseCoinValue, p.baseCoin)
 	fmt.Println()
@@ -537,7 +560,13 @@ func (p *PaperWallet) updateEquityValues(candle model.Candle) {
 		}
 
 		baseCoinInfo := p.assets[p.baseCoin]
-		newValue := total + baseCoinInfo.Lock + baseCoinInfo.Free
+		var newValue float64
+		if baseCoinInfo != nil {
+			newValue = total + baseCoinInfo.Lock + baseCoinInfo.Free
+		} else {
+			newValue = total
+		}
+		
 		if len(p.equityValues) > 0 && p.equityValues[len(p.equityValues)-1].Time.Equal(candle.Time) {
 			p.equityValues[len(p.equityValues)-1].Value = newValue
 		} else {

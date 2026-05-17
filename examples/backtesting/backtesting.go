@@ -17,6 +17,7 @@ import (
 // Backtesting is a simulation of the strategy in historical data (from CSV)
 func main() {
 	ctx := context.Background()
+	cfg := server.LoadConfig()
 
 	// bot settings (eg: pairs, telegram, etc)
 	settings := ninjabot.Settings{
@@ -101,7 +102,7 @@ func main() {
 	bot.Summary()
 
 	// Display candlesticks chart in local browser
-	srv, err := server.NewServer(chart)
+	srv, err := server.NewServer(chart, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}

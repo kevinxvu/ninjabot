@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"sync/atomic"
@@ -98,4 +99,45 @@ func (b Bunt) Orders(filters ...OrderFilter) ([]*model.Order, error) {
 		return nil, err
 	}
 	return orders, nil
+}
+
+func (b *Bunt) CreateSession(session *model.Session) error {
+	return b.db.Update(func(tx *buntdb.Tx) error {
+		content, err := json.Marshal(session)
+		if err != nil {
+			return err
+		}
+		_, _, err = tx.Set("session_"+session.ID, string(content), nil)
+		return err
+	})
+}
+
+func (b *Bunt) UpdateSession(session *model.Session) error {
+	return b.CreateSession(session) // BuntDB Set works as upsert
+}
+
+func (b *Bunt) GetSessionsByType(sessionType string) ([]*model.Session, error) {
+	var sessions []*model.Session
+	err := b.db.View(func(tx *buntdb.Tx) error {
+		err := tx.AscendKeys("session_*", func(key, value string) bool {
+			var session model.Session
+			if err := json.Unmarshal([]byte(value), &session); err != nil {
+				return true
+			}
+			if session.Type == sessionType {
+				sessions = append(sessions, &session)
+			}
+			return true
+		})
+		return err
+	})
+	return sessions, err
+}
+
+func (b *Bunt) GetSessionByID(id string) (*model.Session, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (b *Bunt) DeleteSession(id string) error {
+	return fmt.Errorf("not implemented")
 }

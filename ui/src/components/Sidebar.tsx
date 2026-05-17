@@ -1,11 +1,12 @@
 
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, LineChart, Wallet, PieChart, Activity } from 'lucide-react';
+import { LayoutDashboard, LineChart, Wallet, PieChart, Activity, Zap } from 'lucide-react';
 
 export function Sidebar() {
   const menuItems = [
     { name: 'Dashboard', icon: <LayoutDashboard size={18} />, path: '/dashboard' },
     { name: 'Backtesting', icon: <Activity size={18} />, path: '/backtesting' },
+    { name: 'Realtime Signals', icon: <Zap size={18} />, path: '/realtime-signals' },
     { name: 'Future Market', icon: <LineChart size={18} />, path: '/futuremarket' },
     { name: 'Paper Wallet', icon: <Wallet size={18} />, path: '/paperwallet' },
     { name: 'Spot Market', icon: <PieChart size={18} />, path: '/spotmarket' },

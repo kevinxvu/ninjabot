@@ -43,6 +43,8 @@ type Order struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 
+	SessionID string `db:"session_id" json:"session_id" gorm:"index"`
+
 	// OCO Orders only
 	Stop    *float64 `db:"stop" json:"stop"`
 	GroupID *int64   `db:"group_id" json:"group_id"`

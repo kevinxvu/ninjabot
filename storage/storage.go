@@ -12,6 +12,11 @@ type Storage interface {
 	CreateOrder(order *model.Order) error
 	UpdateOrder(order *model.Order) error
 	Orders(filters ...OrderFilter) ([]*model.Order, error)
+	CreateSession(session *model.Session) error
+	UpdateSession(session *model.Session) error
+	GetSessionsByType(sessionType string) ([]*model.Session, error)
+	GetSessionByID(id string) (*model.Session, error)
+	DeleteSession(id string) error
 }
 
 func WithStatusIn(status ...model.OrderStatusType) OrderFilter {

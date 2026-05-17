@@ -25,6 +25,7 @@ type WSMessage struct {
 	Data      interface{} `json:"data,omitempty"`
 	Action    string      `json:"action,omitempty"`
 	Timeframe string      `json:"timeframe,omitempty"`
+	SessionID string      `json:"session_id,omitempty"`
 }
 
 type MarketWebsocketManager struct {

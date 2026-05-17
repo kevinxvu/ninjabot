@@ -35,7 +35,7 @@ func FromSQL(dialect gorm.Dialector, opts ...gorm.Option) (Storage, error) {
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	err = db.AutoMigrate(&model.Order{})
+	err = db.AutoMigrate(&model.Session{}, &model.Order{})
 	if err != nil {
 		return nil, err
 	}
@@ -77,4 +77,39 @@ func (s *SQL) Orders(filters ...OrderFilter) ([]*model.Order, error) {
 		}
 		return true
 	}), nil
+}
+
+// CreateSession creates a new session in the database
+func (s *SQL) CreateSession(session *model.Session) error {
+	return s.db.Create(session).Error
+}
+
+// UpdateSession updates an existing session
+func (s *SQL) UpdateSession(session *model.Session) error {
+	return s.db.Save(session).Error
+}
+
+// GetSessionsByType returns all sessions of a specific type
+func (s *SQL) GetSessionsByType(sessionType string) ([]*model.Session, error) {
+	var sessions []*model.Session
+	err := s.db.Where("type = ?", sessionType).Order("created_at desc").Find(&sessions).Error
+	return sessions, err
+}
+
+// GetSessionByID returns a specific session by its ID, including its orders
+func (s *SQL) GetSessionByID(id string) (*model.Session, error) {
+	var session model.Session
+	err := s.db.Preload("Orders").Where("id = ?", id).First(&session).Error
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (s *SQL) DeleteSession(id string) error {
+	// Delete orders associated with this session first
+	if err := s.db.Where("session_id = ?", id).Delete(&model.Order{}).Error; err != nil {
+		return err
+	}
+	return s.db.Where("id = ?", id).Delete(&model.Session{}).Error
 }

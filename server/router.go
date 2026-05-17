@@ -30,6 +30,27 @@ func SetupRouter(srv *Server) *http.ServeMux {
 	mux.HandleFunc("/api/market/tickers", srv.HandleMarketTickers)
 	mux.HandleFunc("/api/market/candles", srv.HandleMarketCandles)
 	mux.HandleFunc("/api/market/portfolio", srv.HandleMarketPortfolio)
+	
+	// Realtime Signals API
+	mux.HandleFunc("/api/realtime-signals", srv.HandleListRealtimeSignals)
+	mux.HandleFunc("/api/realtime-signals/start", srv.HandleStartRealtimeSignal)
+	// Dynamic routes
+	mux.HandleFunc("/api/realtime-signals/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if r.Method == http.MethodDelete {
+			srv.HandleDeleteRealtimeSignal(w, r)
+			return
+		}
+
+		if strings.HasSuffix(path, "/stop") {
+			srv.HandleStopRealtimeSignal(w, r)
+		} else if strings.HasSuffix(path, "/resume") {
+			srv.HandleResumeRealtimeSignal(w, r)
+		} else {
+			srv.HandleGetRealtimeSignal(w, r)
+		}
+	})
+
 	mux.HandleFunc("/ws/market", srv.HandleMarketWebsocket)
 
 	// Serve React App and static assets

@@ -8,8 +8,11 @@ import (
 	"os"
 	"sync"
 
+	"github.com/glebarez/sqlite"
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/plot"
+	"github.com/rodrigo-brito/ninjabot/storage"
+	"gorm.io/gorm"
 )
 
 type Server struct {
@@ -20,6 +23,8 @@ type Server struct {
 	exc         *exchange.Binance
 	wsManager   *MarketWebsocketManager
 	pairsData   map[string]interface{}
+	db          storage.Storage
+	signalMgr   *SignalManager
 }
 
 func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
@@ -39,11 +44,21 @@ func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
 		fmt.Printf("Warning: Could not load pairs.json: %v\n", err)
 	}
 
+	// Initialize SQLite Database
+	dbStorage, err := storage.FromSQL(sqlite.Open("ninjabot.db"), &gorm.Config{})
+	if err != nil {
+		fmt.Printf("Warning: Could not initialize SQLite database: %v\n", err)
+	}
+
+	signalMgr := NewSignalManager(dbStorage, exc, wsManager)
+
 	return &Server{
 		chart:     chart,
 		exc:       exc,
 		wsManager: wsManager,
 		pairsData: pairsData,
+		db:        dbStorage,
+		signalMgr: signalMgr,
 	}, nil
 }
 

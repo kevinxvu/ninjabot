@@ -450,3 +450,167 @@ func (s *Server) HandleMarketPortfolio(w http.ResponseWriter, r *http.Request) {
 		Assets:         assets,
 	})
 }
+
+// HandleStartRealtimeSignal POST /api/realtime-signals/start
+func (s *Server) HandleStartRealtimeSignal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req StartSignalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	// Validate req
+	if req.Pair == "" || req.Timeframe == "" || req.Strategy == "" || req.InitialAsset == "" || req.InitialAmount <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+		return
+	}
+
+	session, err := s.signalMgr.StartSession(r.Context(), req)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, session)
+}
+
+// HandleDeleteRealtimeSignal DELETE /api/realtime-signals/:id
+func (s *Server) HandleDeleteRealtimeSignal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract ID from path: /api/realtime-signals/{id}
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	sessionID := pathParts[3]
+
+	// Must stop before delete
+	s.signalMgr.StopSession(sessionID)
+
+	// Delete from DB
+	err := s.db.DeleteSession(sessionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// HandleStopRealtimeSignal POST /api/realtime-signals/:id/stop
+func (s *Server) HandleStopRealtimeSignal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract ID from path: /api/realtime-signals/{id}/stop
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 5 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	sessionID := pathParts[3]
+
+	err := s.signalMgr.StopSession(sessionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
+}
+
+// HandleResumeRealtimeSignal POST /api/realtime-signals/:id/resume
+func (s *Server) HandleResumeRealtimeSignal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract ID from path: /api/realtime-signals/{id}/resume
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 5 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	sessionID := pathParts[3]
+
+	session, err := s.signalMgr.ResumeSession(r.Context(), sessionID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, session)
+}
+
+// HandleListRealtimeSignals GET /api/realtime-signals
+func (s *Server) HandleListRealtimeSignals(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessions, err := s.db.GetSessionsByType("REALTIME_SIGNAL")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Enhance with current runtime status
+	for _, sess := range sessions {
+		s.signalMgr.mu.Lock()
+		if _, ok := s.signalMgr.bots[sess.ID]; ok {
+			sess.Status = "running"
+		} else if sess.Status == "running" {
+			// It's in DB as running but not in memory
+			sess.Status = "stopped" 
+			s.db.UpdateSession(sess)
+		}
+		s.signalMgr.mu.Unlock()
+	}
+
+	writeJSON(w, http.StatusOK, sessions)
+}
+
+// HandleGetRealtimeSignal GET /api/realtime-signals/:id
+func (s *Server) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract ID from path: /api/realtime-signals/{id}
+	pathParts := strings.Split(r.URL.Path, "/")
+	if len(pathParts) < 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
+		return
+	}
+	sessionID := pathParts[3]
+
+	session, err := s.db.GetSessionByID(sessionID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		return
+	}
+
+	// Update running status
+	s.signalMgr.mu.Lock()
+	if _, ok := s.signalMgr.bots[sessionID]; ok {
+		session.Status = "running"
+	}
+	s.signalMgr.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, session)
+}

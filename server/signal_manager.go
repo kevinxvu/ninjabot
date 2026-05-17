@@ -75,13 +75,51 @@ type StartSignalRequest struct {
 	SlowPeriod    int     `json:"slow_period"`
 }
 
+// CalculateBalancesFromOrders calculates the actual wallet balances based on the session's initial asset/amount and its order history.
+func CalculateBalancesFromOrders(session *model.Session) map[string]float64 {
+	balancesMap := make(map[string]float64)
+	balancesMap[session.InitialAsset] = session.InitialAmount
+
+	for _, order := range session.Orders {
+		if order.Status == model.OrderStatusTypeFilled {
+			baseAsset, quoteAsset := exchange.SplitAssetQuote(order.Pair)
+			orderValue := order.Price * order.Quantity
+
+			if order.Side == model.SideTypeBuy {
+				// Mua: nhận baseAsset (VD: BTC), trả quoteAsset (VD: USDT)
+				balancesMap[baseAsset] += order.Quantity
+				balancesMap[quoteAsset] -= orderValue
+			} else if order.Side == model.SideTypeSell {
+				// Bán: nhận quoteAsset, trả baseAsset
+				balancesMap[quoteAsset] += orderValue
+				balancesMap[baseAsset] -= order.Quantity
+			}
+		}
+	}
+	return balancesMap
+}
+
 func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.Session, req StartSignalRequest) error {
+	// Reconstruct portfolio balances from order history
+	assets := CalculateBalancesFromOrders(session)
+	
+	// Tạo mảng option cho PaperWallet
+	options := []exchange.PaperWalletOption{
+		exchange.WithDataFeed(m.exchange),
+	}
+	
+	// Add WithPaperAsset for each asset that has a balance
+	for asset, amount := range assets {
+		if amount > 0.00000001 { // ignore tiny dust
+			options = append(options, exchange.WithPaperAsset(asset, amount))
+		}
+	}
+
 	// Cấu hình PaperWallet
 	paperWallet := exchange.NewPaperWallet(
 		ctx,
 		"USDT",
-		exchange.WithPaperAsset(req.InitialAsset, req.InitialAmount),
-		exchange.WithDataFeed(m.exchange),
+		options...,
 	)
 
 	// Lấy config Bot
@@ -245,6 +283,23 @@ func (m *SignalManager) StopSession(sessionID string) error {
 	instance.Cancel()
 	delete(m.bots, sessionID)
 	return nil
+}
+
+func (m *SignalManager) GetSessionBalances(sessionID string) ([]model.Balance, error) {
+	m.mu.Lock()
+	instance, exists := m.bots[sessionID]
+	m.mu.Unlock()
+
+	if !exists {
+		return nil, fmt.Errorf("session not running in memory")
+	}
+
+	// Fetch current account state from the running bot's controller
+	acc, err := instance.Bot.Controller().Account()
+	if err != nil {
+		return nil, err
+	}
+	return acc.Balances, nil
 }
 
 // SessionStorageWrapper bọc Storage gốc, tự động inject SessionID vào Order

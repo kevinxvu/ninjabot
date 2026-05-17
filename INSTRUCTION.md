@@ -416,7 +416,22 @@ After a backtest completes, `GET /api/summary` returns a JSON payload that the c
 | `GET` | `/data?pair=X` | Raw chart data JSON (candles, indicators, orders, equity) |
 | `GET` | `/history?pair=X` | Trade history CSV download |
 | `GET` | `/health` | Health check |
-| `GET` | `/enhanced?pair=X` | Legacy route, redirects to `/?pair=X` |
+| `GET` | `/api/realtime-signals` | List all realtime signal sessions |
+| `POST` | `/api/realtime-signals/start` | Start a new realtime paper trading session |
+| `POST` | `/api/realtime-signals/:id/stop` | Stop an active realtime session |
+| `POST` | `/api/realtime-signals/:id/resume` | Resume a stopped realtime session |
+| `DELETE` | `/api/realtime-signals/:id` | Delete a realtime session entirely |
+| `GET` | `/ws/market` | WebSockets connection for live ticker, candle, and order updates |
+
+### Realtime Signal (Paper Trading UI)
+
+Beyond historical backtesting, the web UI supports **Realtime Signal tracking**. This runs a live bot instance entirely in-memory using the `exchange.PaperWallet` backed by a live Binance data feed via WebSockets.
+
+1. **Persistent State:** Uses SQLite (`ninjabot.db`) to safely persist Session and Order data across page reloads and server restarts.
+2. **Goroutine Management:** Spawns a background `bot.Run()` isolated from the HTTP request context. Supports stopping, resuming, and deleting sessions cleanly.
+3. **Live Dashboard:** Renders incoming WebSockets events into live updating candlestick charts (with volume) and real-time execution markers (Buy/Sell annotations).
+
+> **Note on Chart History Limit:** Currently, the live chart endpoint (`/api/market/candles`) relies on `exchange.CandlesByLimit`, which wraps the Binance Klines API. The Binance API has a hard limit of 1,000 candles per request. If a realtime session runs for a very long time (e.g., >16 hours on a `1m` timeframe), older execution markers may not have underlying candles displayed on the dashboard. A pagination mechanism (chunking requests by `endTime`) for historical candle fetching is required in the future to resolve this.
 
 ### Architecture
 

@@ -14,4 +14,7 @@ type Session struct {
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 	Orders        []Order   `json:"orders" gorm:"foreignKey:SessionID"`
+	
+	// Dynamically populated via API if running
+	Balances      []Balance `json:"balances,omitempty" gorm:"-"`
 }

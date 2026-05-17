@@ -28,7 +28,25 @@ export function SignalDashboard() {
       
       if (data && data.pair) {
         // Fetch historical candles for chart context
-        const cData: any = await api.get(`/api/market/candles?pair=${data.pair}&timeframe=${data.timeframe}`);
+        // Ensure we load enough candles to cover the session duration, or default to a safe maximum
+        const sessionStart = new Date(data.created_at).getTime();
+        const now = Date.now();
+        const diffMinutes = Math.ceil((now - sessionStart) / (1000 * 60));
+        
+        let limit = 100; // default minimum
+        if (data.timeframe === '1m') {
+          limit = Math.max(100, Math.min(diffMinutes + 60, 1000)); // Cap at 1000 to prevent overload
+        } else if (data.timeframe === '5m') {
+          limit = Math.max(100, Math.min(Math.ceil(diffMinutes/5) + 20, 1000));
+        } else if (data.timeframe === '15m') {
+          limit = Math.max(100, Math.min(Math.ceil(diffMinutes/15) + 20, 1000));
+        } else if (data.timeframe === '1h') {
+          limit = Math.max(100, Math.min(Math.ceil(diffMinutes/60) + 10, 1000));
+        } else {
+          limit = 500;
+        }
+
+        const cData: any = await api.get(`/api/market/candles?pair=${data.pair}&timeframe=${data.timeframe}&limit=${limit}`);
         if (cData && Array.isArray(cData)) {
           setCandles(cData);
         }
@@ -127,7 +145,7 @@ export function SignalDashboard() {
       y: order.price,
       xref: 'x',
       yref: 'y',
-      text: isBuy ? 'BUY' : 'SELL',
+      text: isBuy ? 'B' : 'S',
       showarrow: true,
       arrowhead: 2,
       ax: 0,
@@ -218,28 +236,40 @@ export function SignalDashboard() {
             </span>
           </div>
           
-          <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--text-secondary)]">
-            <div className="flex items-center gap-1.5">
-              <Activity size={14} className="text-indigo-500" />
-              <span className="font-medium text-[var(--text-primary)]">{session.strategy}</span>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--text-secondary)]">
+              <div className="flex items-center gap-1.5">
+                <Activity size={14} className="text-indigo-500" />
+                <span className="font-medium text-[var(--text-primary)]">{session.strategy}</span>
+              </div>
+              <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+              <div className="flex items-center gap-1.5">
+                <Clock size={14} className="text-orange-500" />
+                <span className="font-medium text-[var(--text-primary)]">{session.timeframe}</span>
+              </div>
+              <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+              <div className="flex items-center gap-1.5">
+                <DollarSign size={14} className="text-green-500" />
+                <span>Initial: <span className="font-medium text-[var(--text-primary)]">{session.initial_amount} {session.initial_asset}</span></span>
+              </div>
+              <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+              <div className="flex items-center gap-1.5">
+                <Calendar size={14} className="text-blue-500" />
+                <span>Started: <span className="font-medium text-[var(--text-primary)]">{new Date(session.created_at).toLocaleString()}</span></span>
+              </div>
             </div>
-            <div className="w-1 h-1 rounded-full bg-gray-300"></div>
-            <div className="flex items-center gap-1.5">
-              <Clock size={14} className="text-orange-500" />
-              <span className="font-medium text-[var(--text-primary)]">{session.timeframe}</span>
-            </div>
-            <div className="w-1 h-1 rounded-full bg-gray-300"></div>
-            <div className="flex items-center gap-1.5">
-              <DollarSign size={14} className="text-green-500" />
-              <span>Initial: <span className="font-medium text-[var(--text-primary)]">{session.initial_amount} {session.initial_asset}</span></span>
-            </div>
-            <div className="w-1 h-1 rounded-full bg-gray-300"></div>
-            <div className="flex items-center gap-1.5">
-              <Calendar size={14} className="text-blue-500" />
-              <span>Started: <span className="font-medium text-[var(--text-primary)]">{new Date(session.created_at).toLocaleString()}</span></span>
-            </div>
+            
+            {/* Wallet Balances Summary */}
+            {session.balances && session.balances.length > 0 && (
+              <div className="flex gap-2 mt-3 p-2 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border-color)] inline-flex flex-wrap">
+                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase self-center mr-1">Wallet:</span>
+                {session.balances.map((b: any) => (
+                   <span key={b.Asset} className="text-xs font-medium bg-[var(--bg-primary)] px-2 py-1 rounded shadow-sm">
+                     <span className="text-[var(--text-primary)]">{b.Free.toFixed(4)}</span> <span className="text-[var(--text-secondary)]">{b.Asset}</span>
+                   </span>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
 
         <div className="flex gap-2">
           {session.status === 'running' ? (
@@ -300,9 +330,9 @@ export function SignalDashboard() {
                 showlegend: false,
                 hovermode: "x unified",
                 hoverlabel: {
-                  bgcolor: "var(--bg-primary)",
-                  font: { color: "var(--text-primary)" },
-                  bordercolor: "var(--border-color)",
+                  bgcolor: "#ffffff",
+                  font: { color: "#0f172a" },
+                  bordercolor: "#e2e8f0",
                 },
               }}
               useResizeHandler={true}

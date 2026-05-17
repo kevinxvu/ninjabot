@@ -15,6 +15,7 @@ import (
 	ninjabot "github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/download"
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
@@ -397,6 +398,9 @@ func (s *Server) HandleMarketCandles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
 
 	candles, err := s.exc.CandlesByLimit(r.Context(), pair, timeframe, limit)
 	if err != nil {
@@ -611,6 +615,26 @@ func (s *Server) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request)
 		session.Status = "running"
 	}
 	s.signalMgr.mu.Unlock()
+	
+	if session.Status == "running" {
+		balances, err := s.signalMgr.GetSessionBalances(sessionID)
+		if err == nil {
+			session.Balances = balances
+		}
+	} else {
+		// Calculate from orders if not running
+		balancesMap := CalculateBalancesFromOrders(session)
+		
+		for asset, amount := range balancesMap {
+			if amount > 0.00000001 {
+				session.Balances = append(session.Balances, model.Balance{
+					Asset: asset,
+					Free:  amount,
+					Lock:  0,
+				})
+			}
+		}
+	}
 
 	writeJSON(w, http.StatusOK, session)
 }

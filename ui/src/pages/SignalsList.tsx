@@ -38,7 +38,7 @@ export function SignalsList() {
         </div>
         <button
           onClick={() => navigate('/realtime-signals/setup')}
-          className="btn-primary flex items-center gap-2 px-4 py-2"
+          className="btn-primary w-auto flex items-center gap-2 px-4 py-2"
         >
           <Plus size={16} /> New Session
         </button>

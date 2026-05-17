@@ -29,8 +29,9 @@ The Ninjabot framework is a Go-based cryptocurrency trading bot framework. It is
 Key components and directory structure:
 
 *   **`cmd/`**: Entry point (`main.go`) for the `ninjabot` HTTP server.
-*   **`server/`**: Contains the HTTP server logic, handlers, router, and summary/KPI calculations for the Web Backtest UI.
-*   **`model/`**: Contains core domain entities such as `Candle`, `Order`, `Dataframe`, and `Series`. `Dataframe` is widely used across the framework for holding arrays of OHLCV data.
+*   **`server/`**: Contains the HTTP server logic, handlers, router, summary/KPI calculations, and Realtime Signal background bot manager.
+*   **`storage/`**: Includes embedded databases. Uses BuntDB for temporary backtest memory, and SQLite for persistent Realtime Signal & Order storage.
+*   **`model/`**: Contains core domain entities such as `Candle`, `Order`, `Dataframe`, `Series`, and `Session`. `Dataframe` is widely used across the framework for holding arrays of OHLCV data.
 *   **`exchange/`**: Adapters that implement the Exchange interface.
     *   `binance.go` & `binance_future.go`: Live trading on Binance Spot/Futures.
     *   `csvfeed.go`: Replays historical candle data from CSV files for backtesting.
@@ -45,6 +46,7 @@ Key components and directory structure:
 ## Development Specifics
 
 *   **UI/Frontend Design:** The Web UI (`ui/`) strictly follows a **Payment Gateway / Fintech Minimalism** aesthetic (e.g., Stripe, Vercel). Always use flat design, subtle borders, soft drop shadows (`var(--card-shadow)`), and Indigo/Slate brand colors. Use `label-style` for small uppercase text and pastel badges for statuses. Never use brutalist or overly colorful/cluttered designs.
+*   **API Limitations:** Be aware that Binance Klines API has a hard limit of 1000 candles per request. When building features that require large historical datasets (like long-running realtime signal charts), you must implement pagination logic rather than just passing a large `limit`.
 *   When testing order execution logic, heavily utilize the `exchange.PaperWallet` component to simulate broker interactions without risk.
 *   Always ensure mathematical precision when working with `indicator/` calculations or modifying `model.Candle` / `model.Order` logic, as this directly impacts trading results.
 *   To test your strategies with real (but historical) data, use the backtest engine combining `exchange.CSVFeed` with your strategy.

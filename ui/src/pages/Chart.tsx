@@ -494,15 +494,15 @@ export function Chart() {
         y: 1.02,
         xanchor: "left" as any,
         x: 0,
-        bgcolor: "var(--bg-primary)",
-        bordercolor: "var(--border-color)",
+        bgcolor: "#ffffff",
+        bordercolor: "#e2e8f0",
         borderwidth: 1
       },
       hovermode: "x unified" as any,
       hoverlabel: {
-        bgcolor: "var(--bg-primary)",
-        font: { color: "var(--text-primary)" },
-        bordercolor: "var(--border-color)",
+        bgcolor: "#ffffff",
+        font: { color: "#0f172a" },
+        bordercolor: "#e2e8f0",
       },
       annotations,
       shapes,
@@ -621,15 +621,15 @@ export function Chart() {
         y: 1.02,
         xanchor: "left" as any,
         x: 0,
-        bgcolor: "var(--bg-primary)",
-        bordercolor: "var(--border-color)",
+        bgcolor: "#ffffff",
+        bordercolor: "#e2e8f0",
         borderwidth: 1
       },
       hovermode: "x unified" as any,
       hoverlabel: {
-        bgcolor: "var(--bg-primary)",
-        font: { color: "var(--text-primary)" },
-        bordercolor: "var(--border-color)",
+        bgcolor: "#ffffff",
+        font: { color: "#0f172a" },
+        bordercolor: "#e2e8f0",
       },
       shapes,
       annotations
@@ -717,15 +717,15 @@ export function Chart() {
         y: 1.02,
         xanchor: "left" as any,
         x: 0,
-        bgcolor: "var(--bg-primary)",
-        bordercolor: "var(--border-color)",
+        bgcolor: "#ffffff",
+        bordercolor: "#e2e8f0",
         borderwidth: 1
       },
       hovermode: "x unified" as any,
       hoverlabel: {
-        bgcolor: "var(--bg-primary)",
-        font: { color: "var(--text-primary)" },
-        bordercolor: "var(--border-color)",
+        bgcolor: "#ffffff",
+        font: { color: "#0f172a" },
+        bordercolor: "#e2e8f0",
       },
     };
 

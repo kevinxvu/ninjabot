@@ -60,6 +60,7 @@ Install the following tools before setting up the project:
 - **Git** — [https://git-scm.com/](https://git-scm.com/)
 - **Make** (optional, but recommended for shortcut commands)
 - **golangci-lint** (optional, required for `make lint`) — [https://golangci-lint.run/usage/install/](https://golangci-lint.run/usage/install/)
+- **Node.js 20.19+ or 22.12+** for the React/Vite UI. The UI may still build on Node.js 20.16.0, but Vite reports it as below the recommended runtime.
 
 Verify your Go installation:
 
@@ -89,7 +90,7 @@ ninjabot/
 │   ├── paperwallet.go     # Simulated wallet for paper trading
 │   └── exchange.go        # Shared exchange utilities (pair splitting, data feed)
 ├── indicator/             # Technical indicator wrappers (EMA, SMA, MACD, Stochastic, CCI, Supertrend, etc.)
-├── model/                 # Core data models: Candle, Order, Dataframe, Series, Settings
+├── model/                 # Core data models: Candle, Order, Dataframe, Series, Settings, Session, SessionEvent
 ├── notification/          # Notification adapters (Telegram, Email)
 ├── order/                 # Order controller and order feed/pub-sub
 ├── plot/
@@ -97,8 +98,9 @@ ninjabot/
 │   └── indicator/         # Plot-specific indicator renderers (RSI, MACD, Stochastic, CCI, Bollinger, etc.)
 ├── server/
 │   ├── server.go          # HTTP server initialization and lifecycle
-│   ├── handlers.go        # API endpoints (backtest, summary, data, etc.)
+│   ├── handlers.go        # API endpoints (backtest, summary, realtime signals, market data, etc.)
 │   ├── router.go          # Route definitions
+│   ├── signal_manager.go  # Realtime paper-trading session lifecycle and WebSocket coordination
 │   ├── summary.go         # Summary and KPIs calculation for backtesting
 │   └── types.go           # HTTP request/response types
 ├── service/               # Core interfaces (Exchange, Broker, Notifier, Feeder, Telegram)
@@ -112,7 +114,7 @@ ninjabot/
 │   ├── scheduler.go       # Cron-like scheduler
 │   └── trailing.go        # Trailing stop utility
 ├── ui/
-│   ├── src/               # React frontend source code (components, pages, styles)
+│   ├── src/               # React frontend source code (setup pages, dashboards, charts, controls, styles)
 │   ├── dist/              # Built frontend assets (HTML, JS, CSS)
 │   ├── package.json       # Node.js dependencies
 │   ├── vite.config.ts     # Vite bundler configuration
@@ -134,6 +136,16 @@ ninjabot/
 | `exchange/paperwallet.go` | Simulated exchange for paper trading & backtesting |
 | `cmd/main.go` | Web UI entry point for running backtests interactively via browser |
 | `plot/chart.go` | Chart server; `Register()`, `Reset()`, `SetStrategy()`, `SetPaperWallet()` |
+| `server/signal_manager.go` | Realtime signal session manager; starts/stops/resumes paper-trading bot goroutines and rehydrates persisted sessions |
+| `model/session.go`, `model/session_event.go` | Persisted realtime session metadata and lifecycle events |
+| `storage/storage.go`, `storage/sql.go`, `storage/buntdb.go` | Storage contracts/backends for sessions, orders, and session events |
+| `ui/src/pages/SetupBacktest.tsx` | Backtest setup page, replacing the old `Home.tsx` role |
+| `ui/src/pages/BacktestDashboard.tsx` | Backtest analytics dashboard, replacing the old `Chart.tsx` role |
+| `ui/src/pages/SignalDashboard.tsx` | Realtime paper-trading session dashboard |
+| `ui/src/components/PriceChart.tsx` | Shared backtest/realtime execution chart with indicators, orders, session events, and current price line |
+| `ui/src/components/CryptoLiveChart.tsx` | Live market candlestick and volume chart for `Dashboard.tsx` |
+| `ui/src/components/SelectPair.tsx`, `TimeframeSelect.tsx`, `StrategyEngine.tsx` | Shared setup and dashboard controls |
+| `ui/src/utils/time.ts` | Client-local, 24-hour time formatting helpers for text and Plotly date axes |
 
 ---
 
@@ -377,6 +389,21 @@ The React frontend (`ui/`) strictly follows a **Payment Gateway / Fintech Minima
 - **Colors:** Deep Slate/Indigo (`var(--brand-accent)`, `#635bff`) for primary trust signals, clean white cards on subtle light-gray (`#f7f9fc`) backgrounds.
 - **Components:** Flat design with very thin borders (`#e2e8f0`), smooth & wide shadows (`var(--input-shadow)` and `var(--card-shadow)`), and softly rounded corners (`rounded-xl` for cards, `rounded-md` for buttons/badges).
 - **Status Indicators:** Avoid harsh red/green; use pastel/muted backgrounds with bold text for badges (e.g., `bg-emerald-50 text-emerald-600` for profits).
+- **Time Display:** Always display user-facing time in the client machine's timezone and 24-hour format. Use `ui/src/utils/time.ts` helpers instead of raw `toLocaleString()`, `toLocaleTimeString()`, or passing UTC ISO strings directly to Plotly.
+
+### React page structure
+
+The current UI is split into setup pages and dashboards:
+
+| File | Purpose |
+|---|---|
+| `ui/src/pages/SetupBacktest.tsx` | Backtest setup form; this replaces the old `Home.tsx` role. |
+| `ui/src/pages/BacktestDashboard.tsx` | Historical backtest analytics: price/action chart, equity/position chart, performance chart, recent trades, and summary panel. |
+| `ui/src/pages/Dashboard.tsx` | Live market overview; delegates the main candlestick chart to `CryptoLiveChart.tsx`. |
+| `ui/src/pages/SignalDashboard.tsx` | Realtime paper-trading session dashboard with lifecycle controls, live chart updates, portfolio equity, and signal history. |
+| `ui/src/components/PriceChart.tsx` | Shared execution chart for backtest and realtime views. |
+| `ui/src/components/CryptoLiveChart.tsx` | Live market chart with candlesticks and volume. |
+| `ui/src/components/SelectPair.tsx`, `TimeframeSelect.tsx`, `StrategyEngine.tsx` | Reusable pair/timeframe/strategy setup controls. |
 
 ### How to run
 
@@ -425,11 +452,13 @@ After a backtest completes, `GET /api/summary` returns a JSON payload that the c
 
 ### Realtime Signal (Paper Trading UI)
 
-Beyond historical backtesting, the web UI supports **Realtime Signal tracking**. This runs a live bot instance entirely in-memory using the `exchange.PaperWallet` backed by a live Binance data feed via WebSockets.
+Beyond historical backtesting, the web UI supports **Realtime Signal tracking**. This runs live paper-trading bot instances through `server/signal_manager.go`, using `exchange.PaperWallet` backed by Binance market data and WebSockets.
 
-1. **Persistent State:** Uses SQLite (`ninjabot.db`) to safely persist Session and Order data across page reloads and server restarts.
-2. **Goroutine Management:** Spawns a background `bot.Run()` isolated from the HTTP request context. Supports stopping, resuming, and deleting sessions cleanly.
-3. **Live Dashboard:** Renders incoming WebSockets events into live updating candlestick charts (with volume) and real-time execution markers (Buy/Sell annotations).
+1. **Persistent State:** Uses SQLite (`ninjabot.db`) to safely persist Session, SessionEvent, and Order data across page reloads and server restarts.
+2. **Lifecycle Events:** `model/session.go` and `model/session_event.go` represent realtime session metadata and start/stop/resume history.
+3. **Goroutine Management:** Spawns a background `bot.Run()` isolated from the HTTP request context. Supports stopping, resuming, deleting, and rehydrating sessions cleanly.
+4. **Live Dashboard:** Renders incoming WebSockets events into live updating candlestick charts (with volume), session event markers, and real-time execution markers (Buy/Sell annotations).
+5. **Chart Payloads:** Backtest and realtime chart payloads can include candles, indicators, orders, shapes, session events, equity values, and asset values.
 
 > **Note on Chart History Limit:** Currently, the live chart endpoint (`/api/market/candles`) relies on `exchange.CandlesByLimit`, which wraps the Binance Klines API. The Binance API has a hard limit of 1,000 candles per request. If a realtime session runs for a very long time (e.g., >16 hours on a `1m` timeframe), older execution markers may not have underlying candles displayed on the dashboard. A pagination mechanism (chunking requests by `endTime`) for historical candle fetching is required in the future to resolve this.
 
@@ -482,6 +511,8 @@ The `-race` flag enables Go's data race detector — always keep it enabled.
 ```bash
 go test -race -cover ./exchange/...
 go test -race -cover ./order/...
+go test -race -cover ./server/...
+go test -race -cover ./plot/...
 ```
 
 ### Run a single test

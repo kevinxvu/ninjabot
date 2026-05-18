@@ -1,14 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
+import { SelectPair } from '../components/SelectPair';
+import { StrategyEngine, type StrategyOption } from '../components/StrategyEngine';
+import { TimeframeSelect, type TimeframeOption } from '../components/TimeframeSelect';
 import { Settings2, Activity, Play } from 'lucide-react';
 import api from '../api/client';
+
+const REALTIME_TIMEFRAME_OPTIONS: TimeframeOption[] = [
+  { value: '1m', label: '1 minute' },
+  { value: '15m', label: '15 minutes' },
+  { value: '1h', label: '1 hour' },
+  { value: '4h', label: '4 hours' },
+  { value: '1d', label: '1 day' },
+];
+
+const REALTIME_STRATEGY_OPTIONS: StrategyOption[] = [
+  { value: 'emacross', label: 'EMA Crossover' },
+];
+
+interface PairInfo {
+  Asset: string;
+  Quote: string;
+}
+
+const QUOTE_ASSETS = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'BTC', 'ETH', 'BNB', 'TRY', 'EUR', 'BRL'];
+
+function getFallbackPairInfo(pair: string): PairInfo {
+  const quote = QUOTE_ASSETS.find((asset) => pair.endsWith(asset)) || 'USDT';
+  return {
+    Asset: pair.endsWith(quote) ? pair.slice(0, -quote.length) : pair,
+    Quote: quote,
+  };
+}
 
 export function SetupSignal() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pairsInfo, setPairsInfo] = useState<Record<string, any>>({});
+  const [pairsInfo, setPairsInfo] = useState<Record<string, PairInfo>>({});
 
   const [formData, setFormData] = useState({
     pair: 'BTCUSDT',
@@ -21,19 +51,34 @@ export function SetupSignal() {
   });
 
   useEffect(() => {
-    // Fetch pairs
-    const fetchPairs = async () => {
+    if (!formData.pair || pairsInfo[formData.pair]) return;
+
+    let isCurrent = true;
+
+    const fetchPairInfo = async () => {
       try {
-        const data = await api.get('/api/pairs?pairs=all');
-        if (data) {
-          setPairsInfo(data);
+        const data = await api.get(`/api/pairs?pairs=${encodeURIComponent(formData.pair)}`) as Record<string, PairInfo>;
+        const info = data?.[formData.pair];
+
+        if (isCurrent && info) {
+          setPairsInfo(prev => ({ ...prev, [formData.pair]: info }));
+          setFormData(prev => (
+            prev.pair === formData.pair
+              ? { ...prev, initial_asset: info.Quote }
+              : prev
+          ));
         }
       } catch (err) {
-        console.error('Failed to fetch pairs', err);
+        console.error('Failed to fetch pair info', err);
       }
     };
-    fetchPairs();
-  }, []);
+
+    fetchPairInfo();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [formData.pair, pairsInfo]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -54,6 +99,17 @@ export function SetupSignal() {
     });
   };
 
+  const handlePairChange = (pair: string) => {
+    setFormData(prev => {
+      const info = pairsInfo[pair];
+      return {
+        ...prev,
+        pair,
+        initial_asset: info?.Quote || getFallbackPairInfo(pair).Quote
+      };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -69,7 +125,7 @@ export function SetupSignal() {
     }
   };
 
-  const currentPairInfo = pairsInfo[formData.pair] || { Asset: formData.pair.replace('USDT',''), Quote: 'USDT' };
+  const currentPairInfo = pairsInfo[formData.pair] || getFallbackPairInfo(formData.pair);
 
   return (
     <Layout>
@@ -95,38 +151,21 @@ export function SetupSignal() {
               </div>
 
               <div className="grid grid-cols-2 gap-5">
-                <div>
+                <div className="relative z-20">
                   <label className="label-style">Trading Pair</label>
-                  <select
-                    name="pair"
+                  <SelectPair
                     value={formData.pair}
-                    onChange={handleChange}
-                    className="input-field"
-                  >
-                    {Object.keys(pairsInfo).length > 0 ? (
-                      Object.keys(pairsInfo).map(p => (
-                        <option key={p} value={p}>{p}</option>
-                      ))
-                    ) : (
-                      <option value="BTCUSDT">BTCUSDT</option>
-                    )}
-                  </select>
+                    onChange={handlePairChange}
+                  />
                 </div>
 
                 <div>
                   <label className="label-style">Timeframe</label>
-                  <select
-                    name="timeframe"
+                  <TimeframeSelect
                     value={formData.timeframe}
-                    onChange={handleChange}
-                    className="input-field"
-                  >
-                    <option value="1m">1 minute</option>
-                    <option value="15m">15 minutes</option>
-                    <option value="1h">1 hour</option>
-                    <option value="4h">4 hours</option>
-                    <option value="1d">1 day</option>
-                  </select>
+                    options={REALTIME_TIMEFRAME_OPTIONS}
+                    onChange={(timeframe) => setFormData(prev => ({ ...prev, timeframe }))}
+                  />
                 </div>
               </div>
 
@@ -160,53 +199,11 @@ export function SetupSignal() {
               </div>
             </div>
 
-            <div className="space-y-5">
-              <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-2">
-                <Activity size={16} className="text-[var(--text-secondary)]" />
-                <h2 className="text-sm font-semibold text-[var(--text-primary)] uppercase tracking-wide">Strategy Engine</h2>
-              </div>
-
-              <div>
-                <label className="label-style">Algorithm</label>
-                <select
-                  name="strategy"
-                  value={formData.strategy}
-                  onChange={handleChange}
-                  className="input-field mb-4"
-                >
-                  <option value="emacross">EMA Crossover</option>
-                </select>
-              </div>
-
-              {formData.strategy === 'emacross' && (
-                <div className="bg-[var(--bg-tertiary)] p-5 rounded-xl border border-[var(--border-color)] grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="label-style">Fast Period (EMA)</label>
-                    <input
-                      name="fast_period"
-                      type="number"
-                      value={formData.fast_period}
-                      onChange={handleChange}
-                      min="2"
-                      max="100"
-                      className="input-field bg-[var(--bg-primary)]"
-                    />
-                  </div>
-                  <div>
-                    <label className="label-style">Slow Period (SMA)</label>
-                    <input
-                      name="slow_period"
-                      type="number"
-                      value={formData.slow_period}
-                      onChange={handleChange}
-                      min="3"
-                      max="200"
-                      className="input-field bg-[var(--bg-primary)]"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
+            <StrategyEngine
+              values={formData}
+              options={REALTIME_STRATEGY_OPTIONS}
+              onChange={handleChange}
+            />
 
             <div className="pt-4">
               {error && (

@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { MultiSelectPairs } from '../components/MultiSelectPairs';
+import { StrategyEngine } from '../components/StrategyEngine';
+import { TimeframeSelect } from '../components/TimeframeSelect';
 import { Settings2, Activity, Play } from 'lucide-react';
 import api from '../api/client';
 
-export function Home() {
+export function SetupBacktest() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,9 +86,9 @@ export function Home() {
       
       const pairsArr = payload.pairs.split(',').map(s => s.trim()).filter(Boolean);
       if (pairsArr && pairsArr.length > 0) {
-        navigate(`/chart?pair=${pairsArr[0]}`);
+        navigate(`/backtesting/dashboard?pair=${pairsArr[0]}`);
       } else {
-        navigate('/chart');
+        navigate('/backtesting/dashboard');
       }
     } catch (err: any) {
       setError(err.response?.data?.error || err.message || 'Backtest failed');
@@ -133,22 +135,11 @@ export function Home() {
             <div className="grid grid-cols-2 gap-5">
               <div>
                 <label className="label-style">Timeframe</label>
-                <select
-                  name="timeframe"
+                <TimeframeSelect
                   value={formData.timeframe}
-                  onChange={handleChange}
-                  className="input-field"
                   disabled={isTimeframeDisabled}
-                >
-                  <option value="15m">15 minutes</option>
-                  <option value="30m">30 minutes</option>
-                  <option value="1h">1 hour</option>
-                  <option value="2h">2 hours</option>
-                  <option value="4h">4 hours</option>
-                  <option value="6h">6 hours</option>
-                  <option value="12h">12 hours</option>
-                  <option value="1d">1 day</option>
-                </select>
+                  onChange={(timeframe) => setFormData(prev => ({ ...prev, timeframe }))}
+                />
               </div>
 
               <div>
@@ -184,112 +175,7 @@ export function Home() {
             </div>
           </div>
 
-          {/* Section: Strategy */}
-          <div className="space-y-5">
-            <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-2">
-              <Activity size={16} className="text-[var(--text-secondary)]" />
-              <h2 className="text-sm font-semibold text-[var(--text-primary)] uppercase tracking-wide">Strategy Engine</h2>
-            </div>
-
-            <div>
-              <label className="label-style">Algorithm</label>
-              <select
-                name="strategy"
-                value={formData.strategy}
-                onChange={handleChange}
-                className="input-field mb-4"
-              >
-                <option value="emacross">EMA Crossover</option>
-                <option value="dca">DCA (Dollar Cost Averaging)</option>
-                <option value="ocosell">OCO Sell (Stochastic)</option>
-                <option value="trailingstop">Trailing Stop</option>
-                <option value="turtle">Turtle Trading</option>
-              </select>
-            </div>
-
-            {/* Strategy Parameters */}
-            <div className="bg-[var(--bg-tertiary)] p-5 rounded-xl border border-[var(--border-color)]">
-              {formData.strategy === 'emacross' && (
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="label-style">Fast Period (EMA)</label>
-                    <input
-                      name="fast_period"
-                      type="number"
-                      value={formData.fast_period}
-                      onChange={handleChange}
-                      min="2"
-                      max="100"
-                      className="input-field bg-[var(--bg-primary)]"
-                      required
-                    />
-                    <p className="text-[11px] text-[var(--text-secondary)] mt-2 leading-tight">Buy when EMA crosses above SMA.</p>
-                  </div>
-                  <div>
-                    <label className="label-style">Slow Period (SMA)</label>
-                    <input
-                      name="slow_period"
-                      type="number"
-                      value={formData.slow_period}
-                      onChange={handleChange}
-                      min="3"
-                      max="200"
-                      className="input-field bg-[var(--bg-primary)]"
-                      required
-                    />
-                    <p className="text-[11px] text-[var(--text-secondary)] mt-2 leading-tight">Sell when EMA crosses below SMA.</p>
-                  </div>
-                </div>
-              )}
-
-              {formData.strategy === 'dca' && (
-                <div className="grid grid-cols-2 gap-5">
-                  <div>
-                    <label className="label-style">Interval (Days)</label>
-                    <input
-                      name="dca_interval"
-                      type="number"
-                      value={formData.dca_interval}
-                      onChange={handleChange}
-                      min="1"
-                      max="365"
-                      className="input-field bg-[var(--bg-primary)]"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="label-style">Buy Amount (USDT)</label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] font-medium">$</span>
-                      <input
-                        name="dca_buy_amount"
-                        type="number"
-                        value={formData.dca_buy_amount}
-                        onChange={handleChange}
-                        min="10"
-                        step="10"
-                        className="input-field pl-8 bg-[var(--bg-primary)]"
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {['ocosell', 'trailingstop', 'turtle'].includes(formData.strategy) && (
-                <div className="flex items-start gap-3">
-                  <div className="text-[var(--brand-accent)] mt-0.5">
-                    <Activity size={16} />
-                  </div>
-                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                    {formData.strategy === 'ocosell' && 'Uses Stochastic Oscillator for entry and OCO orders for exit. No extra parameters required. Timeframe is fixed to 1d.'}
-                    {formData.strategy === 'trailingstop' && 'Uses EMA Crossover with trailing stop for exits. No extra parameters required. Timeframe is fixed to 4h.'}
-                    {formData.strategy === 'turtle' && 'Turtle trading strategy using 40-period High and 20-period Low. No extra parameters required. Timeframe is fixed to 4h.'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
+          <StrategyEngine values={formData} onChange={handleChange} />
 
           <div className="pt-4">
             {error && (

@@ -46,6 +46,8 @@ func SetupRouter(srv *Server) *http.ServeMux {
 			srv.HandleStopRealtimeSignal(w, r)
 		} else if strings.HasSuffix(path, "/resume") {
 			srv.HandleResumeRealtimeSignal(w, r)
+		} else if strings.HasSuffix(path, "/chart") {
+			srv.HandleSessionChart(w, r)
 		} else {
 			srv.HandleGetRealtimeSignal(w, r)
 		}

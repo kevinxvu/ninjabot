@@ -3,8 +3,28 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Activity, Clock, DollarSign, Calendar, PlaySquare, Square } from 'lucide-react';
 import ReactPlotly from 'react-plotly.js';
-const Plot = (ReactPlotly as any).default || ReactPlotly;
+import { PriceChart, type RealtimeCandle } from '../components/PriceChart';
 import api from '../api/client';
+import { formatClientDateTime, formatClientTime, formatPlotlyLocalDate } from '../utils/time';
+
+const Plot = (ReactPlotly as any).default || ReactPlotly;
+
+function normalizeChartData(chartData: any) {
+  if (!chartData?.candles) return chartData;
+
+  return {
+    ...chartData,
+    candles: chartData.candles.map((candle: any) => ({
+      ...candle,
+      time: candle.time ?? candle.Time,
+      open: candle.open ?? candle.Open,
+      high: candle.high ?? candle.High,
+      low: candle.low ?? candle.Low,
+      close: candle.close ?? candle.Close,
+      volume: candle.volume ?? candle.Volume,
+    })),
+  };
+}
 
 export function SignalDashboard() {
   const { id } = useParams();
@@ -14,9 +34,10 @@ export function SignalDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
+  const [realtimeCandle, setRealtimeCandle] = useState<RealtimeCandle | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const [showVolume, setShowVolume] = useState(true);
+  const [chartData, setChartData] = useState<any>(null); // State mới lưu toàn bộ JSON từ backend
 
   const fetchSession = async () => {
     try {
@@ -25,30 +46,16 @@ export function SignalDashboard() {
       if (data && data.orders) {
         setOrders(data.orders);
       }
-      
-      if (data && data.pair) {
-        // Fetch historical candles for chart context
-        // Ensure we load enough candles to cover the session duration, or default to a safe maximum
-        const sessionStart = new Date(data.created_at).getTime();
-        const now = Date.now();
-        const diffMinutes = Math.ceil((now - sessionStart) / (1000 * 60));
-        
-        let limit = 100; // default minimum
-        if (data.timeframe === '1m') {
-          limit = Math.max(100, Math.min(diffMinutes + 60, 1000)); // Cap at 1000 to prevent overload
-        } else if (data.timeframe === '5m') {
-          limit = Math.max(100, Math.min(Math.ceil(diffMinutes/5) + 20, 1000));
-        } else if (data.timeframe === '15m') {
-          limit = Math.max(100, Math.min(Math.ceil(diffMinutes/15) + 20, 1000));
-        } else if (data.timeframe === '1h') {
-          limit = Math.max(100, Math.min(Math.ceil(diffMinutes/60) + 10, 1000));
-        } else {
-          limit = 500;
-        }
 
-        const cData: any = await api.get(`/api/market/candles?pair=${data.pair}&timeframe=${data.timeframe}&limit=${limit}`);
-        if (cData && Array.isArray(cData)) {
-          setCandles(cData);
+      if (data && data.pair) {
+        try {
+          const cData: any = await api.get(`/api/realtime-signals/${id}/chart`);
+          if (cData) {
+            setChartData(cData);
+            if (cData.candles) setCandles(cData.candles);
+          }
+        } catch(err) {
+          console.error("Failed to load chart data", err);
         }
       }
     } catch (e) {
@@ -83,24 +90,19 @@ export function SignalDashboard() {
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        
+
         if (msg.type === 'TICKER' && msg.pair === session.pair) {
           setCurrentPrice(msg.price);
         } else if (msg.type === 'CANDLE' && msg.pair === session.pair) {
-           setCandles(prev => {
-             const newCandle = msg.data;
-             if (prev.length === 0) return [newCandle];
-             
-             const last = prev[prev.length - 1];
-             if (new Date(last.Time).getTime() === new Date(newCandle.Time).getTime()) {
-               const updated = [...prev];
-               updated[updated.length - 1] = newCandle;
-               return updated;
-             }
-             return [...prev, newCandle];
-           });
+           setRealtimeCandle(msg.data);
+
+           // Fetch only when a candle closes so backend-calculated indicators/orders stay authoritative.
+           if (msg.data?.complete || msg.data?.Complete) {
+             fetchSession();
+           }
         } else if (msg.type === 'ORDER' && msg.session_id === id) {
            setOrders(prev => [msg.data, ...prev]);
+           fetchSession(); // Update chart shapes for new order
         }
       } catch (e) {
         console.error('Lỗi parse ws message', e);
@@ -137,89 +139,80 @@ export function SignalDashboard() {
   if (loading) return <Layout><div className="p-8">Loading...</div></Layout>;
   if (!session) return <Layout><div className="p-8">Session not found</div></Layout>;
 
-  // Prepare chart annotations for orders
-  const annotations = orders.map(order => {
-    const isBuy = order.side === 'BUY';
-    return {
-      x: new Date(order.created_at || order.Time).toISOString(),
-      y: order.price,
-      xref: 'x',
-      yref: 'y',
-      text: isBuy ? 'B' : 'S',
-      showarrow: true,
-      arrowhead: 2,
-      ax: 0,
-      ay: isBuy ? 40 : -40,
-      font: { color: 'white', size: 10 },
-      bgcolor: isBuy ? '#22c55e' : '#ef4444',
-      bordercolor: isBuy ? '#16a34a' : '#dc2626',
-      arrowcolor: isBuy ? '#22c55e' : '#ef4444'
-    };
-  });
+  const priceChartData = normalizeChartData(chartData);
+  const signalHistory = [
+    ...(session.events || []).map((event: any) => ({
+      kind: 'event',
+      time: event.created_at,
+      event,
+    })),
+    ...orders.map((order: any) => ({
+      kind: 'order',
+      time: order.created_at || order.updated_at || order.Time,
+      order,
+    })),
+  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-  // Thêm annotation cho current price
-  const lastPrice = currentPrice || (candles.length > 0 ? candles[candles.length - 1].Close : 0);
-  if (lastPrice > 0) {
-    annotations.push({
-      xref: 'paper',
-      yref: 'y',
-      x: 1,
-      y: lastPrice,
-      xanchor: 'left',
-      yanchor: 'middle',
-      text: lastPrice.toFixed(2),
-      showarrow: false,
-      font: { color: '#ffffff', size: 11 },
-      bgcolor: '#6366f1',
-      borderpad: 4,
-      bordercolor: '#6366f1',
-      borderwidth: 1
-    } as any);
-  }
+  const renderEquityChart = () => {
+    if (!chartData || !chartData.asset_values || !chartData.equity_values) return null;
 
-  const shapes = [];
-  if (lastPrice > 0) {
-    shapes.push({
-      type: 'line',
-      xref: 'paper',
-      x0: 0,
-      x1: 1,
-      yref: 'y',
-      y0: lastPrice,
-      y1: lastPrice,
-      line: {
-        color: '#6366f1',
-        width: 1,
-        dash: 'dot'
+    const hasData = chartData.asset_values.length > 0;
+    if (!hasData) return null;
+
+    const dates = (chartData.candles || candles).map((c: any) => formatPlotlyLocalDate(c.time || c.Time));
+
+    const len = Math.min(dates.length, chartData.asset_values.length);
+    const matchedDates = dates.slice(0, len);
+
+    const traces = [
+      {
+        x: matchedDates,
+        y: chartData.asset_values.slice(0, len),
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Buy & Hold',
+        line: { color: '#94a3b8', width: 2, dash: 'dash' },
+      },
+      {
+        x: matchedDates,
+        y: chartData.equity_values.slice(0, len),
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Strategy Equity',
+        line: { color: '#8b5cf6', width: 2 },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(139, 92, 246, 0.1)',
       }
-    });
-  }
+    ];
 
-  const chartData = {
-    x: candles.map(c => new Date(c.Time).toISOString()),
-    close: candles.map(c => c.Close),
-    decreasing: { line: { color: '#ef4444' }, fillcolor: '#ef4444' },
-    high: candles.map(c => c.High),
-    increasing: { line: { color: '#22c55e' }, fillcolor: '#22c55e' },
-    line: { color: 'rgba(31,119,180,1)' },
-    low: candles.map(c => c.Low),
-    open: candles.map(c => c.Open),
-    type: 'candlestick',
-    xaxis: 'x',
-    yaxis: 'y',
-    name: 'Price'
-  };
-
-  const volumeData = {
-    x: candles.map(c => new Date(c.Time).toISOString()),
-    y: candles.map(c => c.Volume),
-    type: 'bar',
-    name: 'Volume',
-    yaxis: 'y2',
-    marker: {
-      color: candles.map(c => c.Close >= c.Open ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'),
-      line: { width: 0 }
-    }
+    return (
+      <div className="bg-[var(--bg-primary)] p-5 rounded-xl border border-[var(--border-color)] mt-6">
+        <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">Portfolio Equity</h2>
+        <Plot
+          data={traces as any}
+          layout={{
+            height: 300,
+            autosize: true,
+            margin: { l: 40, r: 20, t: 10, b: 30 },
+            paper_bgcolor: 'transparent',
+            plot_bgcolor: 'transparent',
+            xaxis: {
+              type: 'date',
+              gridcolor: 'var(--border-color)',
+              tickformat: "%H:%M\\n%Y-%m-%d",
+              hoverformat: "%Y-%m-%d %H:%M:%S"
+            },
+            yaxis: { gridcolor: 'var(--border-color)' },
+            showlegend: true,
+            legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "right", x: 1 },
+            hovermode: "x unified",
+          }}
+          useResizeHandler={true}
+          style={{ width: '100%', height: '100%' }}
+          config={{ responsive: true, displayModeBar: false }}
+        />
+      </div>
+    );
   };
 
   return (
@@ -254,7 +247,7 @@ export function SignalDashboard() {
               <div className="w-1 h-1 rounded-full bg-gray-300"></div>
               <div className="flex items-center gap-1.5">
                 <Calendar size={14} className="text-blue-500" />
-                <span>Started: <span className="font-medium text-[var(--text-primary)]">{new Date(session.created_at).toLocaleString()}</span></span>
+                <span>Started: <span className="font-medium text-[var(--text-primary)]">{formatClientDateTime(session.created_at)}</span></span>
               </div>
             </div>
             
@@ -288,78 +281,56 @@ export function SignalDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-3 bg-[var(--bg-primary)] p-4 rounded-xl border border-[var(--border-color)] min-h-[500px] flex flex-col">
-          <div className="flex justify-between items-center mb-4 border-b border-[var(--border-color)] pb-2">
-            <h2 className="font-bold">Live Chart</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowVolume(!showVolume)}
-                className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showVolume ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
-              >
-                Volume
-              </button>
-            </div>
-          </div>
-          <div className="flex-1">
-            <Plot
-              data={showVolume ? [chartData as any, volumeData as any] : [chartData as any]}
-              layout={{
-                dragmode: 'pan',
-                autosize: true,
-                margin: { l: 40, r: 80, t: 10, b: 40 },
-                paper_bgcolor: 'transparent',
-                plot_bgcolor: 'transparent',
-                xaxis: { 
-                  type: 'date', 
-                  rangeslider: { visible: false },
-                  gridcolor: 'var(--border-color)',
-                },
-                yaxis: { 
-                  domain: showVolume ? [0.2, 1] : [0, 1],
-                  side: 'right',
-                  gridcolor: 'var(--border-color)',
-                },
-                yaxis2: {
-                  domain: [0, 0.15],
-                  side: 'right',
-                  showgrid: false,
-                  showticklabels: false,
-                },
-                annotations: annotations,
-                shapes: shapes as any,
-                showlegend: false,
-                hovermode: "x unified",
-                hoverlabel: {
-                  bgcolor: "#ffffff",
-                  font: { color: "#0f172a" },
-                  bordercolor: "#e2e8f0",
-                },
-              }}
-              useResizeHandler={true}
-              style={{ width: '100%', height: '100%', minHeight: '500px' }}
-              config={{ responsive: true, scrollZoom: true, displayModeBar: true, displaylogo: false }}
-            />
-          </div>
+        <div className="lg:col-span-3 min-h-[500px] flex flex-col">
+          <PriceChart
+            data={priceChartData}
+            currentPrice={currentPrice}
+            realtimeCandle={realtimeCandle}
+            timeframe={session.timeframe}
+          />
+
+          {renderEquityChart()}
         </div>
-        
+
         <div className="bg-[var(--bg-primary)] p-4 rounded-xl border border-[var(--border-color)] max-h-[600px] overflow-y-auto">
           <h2 className="font-bold border-b border-[var(--border-color)] pb-2 mb-4">Signal History</h2>
           <div className="space-y-3">
-            {orders.length === 0 ? (
+            {signalHistory.length === 0 ? (
               <p className="text-sm text-[var(--text-secondary)] text-center py-4">No signals yet...</p>
             ) : (
-              orders.map((o, idx) => (
-                <div key={idx} className={`p-3 rounded border text-sm ${o.side === 'BUY' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
-                  <div className="flex justify-between font-bold mb-1">
-                    <span className={o.side === 'BUY' ? 'text-green-700' : 'text-red-700'}>{o.side}</span>
-                    <span>${o.price?.toFixed(4)}</span>
+              signalHistory.map((item, idx) => {
+                if (item.kind === 'event') {
+                  const event = item.event;
+                  const isStop = event.type === 'STOP';
+                  const label = event.type === 'RESUME' ? 'RESUME' : event.type;
+                  return (
+                    <div key={`event-${event.id || idx}`} className={`p-3 rounded border text-sm ${isStop ? 'border-orange-200 bg-orange-50' : 'border-emerald-200 bg-emerald-50'}`}>
+                      <div className="flex justify-between font-bold mb-1">
+                        <span className={isStop ? 'text-orange-700' : 'text-emerald-700'}>{label}</span>
+                        <span className="text-[var(--text-secondary)]">Session</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>{isStop ? 'Paused realtime tracking' : event.type === 'RESUME' ? 'Resumed realtime tracking' : 'Started realtime tracking'}</span>
+                        <span>{formatClientTime(event.created_at)}</span>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const o = item.order;
+                return (
+                  <div key={`order-${o.id || idx}`} className={`p-3 rounded border text-sm ${o.side === 'BUY' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                    <div className="flex justify-between font-bold mb-1">
+                      <span className={o.side === 'BUY' ? 'text-green-700' : 'text-red-700'}>{o.side}</span>
+                      <span>${o.price?.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-600">
+                      <span>Qty: {o.quantity}</span>
+                      <span>{formatClientTime(o.created_at || o.Time)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between text-xs text-gray-600">
-                    <span>Qty: {o.quantity}</span>
-                    <span>{new Date(o.created_at || o.Time).toLocaleTimeString()}</span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

@@ -2,7 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import ReactPlotly from 'react-plotly.js';
 import { Layout } from '../components/Layout';
+import { PriceChart } from '../components/PriceChart';
 import api from '../api/client';
+import { formatClientDateTime, formatPlotlyLocalDate } from '../utils/time';
 
 const Plot = (ReactPlotly as any).default || ReactPlotly;
 
@@ -121,7 +123,7 @@ function calculateStats(data: any) {
   };
 }
 
-export function Chart() {
+export function BacktestDashboard() {
   const [searchParams] = useSearchParams();
   const currentPair = searchParams.get('pair');
 
@@ -130,12 +132,7 @@ export function Chart() {
   const [data, setData] = useState<any>(null);
   const [summary, setSummary] = useState<any>(null);
 
-  // View controls
-  const [showIndicators, setShowIndicators] = useState(true);
-  const [showVolume, setShowVolume] = useState(true);
-  const [showSubIndicators, setShowSubIndicators] = useState(false);
-  const [activeSubIndicators, setActiveSubIndicators] = useState<Set<string>>(new Set());
-
+  
   useEffect(() => {
     if (!currentPair) return;
 
@@ -152,16 +149,7 @@ export function Chart() {
 
         setData(chartData as any);
 
-        // Initialize active sub-indicators
-        if ((chartData as any).indicators) {
-          const initialSet = new Set<string>();
-          (chartData as any).indicators.forEach((ind: any) => {
-            if (!ind.overlay && ind.name.startsWith("RSI")) {
-              initialSet.add(ind.name);
-            }
-          });
-          setActiveSubIndicators(initialSet);
-        }
+        
 
         if (summaryData) {
           setSummary(summaryData as any);
@@ -178,24 +166,14 @@ export function Chart() {
 
   const stats = useMemo(() => calculateStats(data), [data]);
 
-  const toggleSubIndicator = (name: string) => {
-    setActiveSubIndicators(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) {
-        next.delete(name);
-      } else {
-        next.add(name);
-      }
-      return next;
-    });
-  };
+  
 
   if (!currentPair) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--bg-secondary)] text-[var(--text-primary)]">
         <div className="text-center">
           <h2 className="text-2xl font-bold mb-4">No trading pair selected</h2>
-          <Link to="/" className="text-[var(--brand-color)] hover:underline">Return to Home</Link>
+          <Link to="/backtesting" className="text-[var(--brand-color)] hover:underline">Return to Backtest Setup</Link>
         </div>
       </div>
     );
@@ -245,288 +223,13 @@ export function Chart() {
     );
   };
 
-  const renderMainChart = () => {
-    if (!data?.candles?.length) return null;
-
-    const times = data.candles.map((c: any) => c.time);
-    
-    // Process orders for markers and annotations
-    const points: any[] = [];
-    const annotations: any[] = [];
-    data.candles.forEach((candle: any) => {
-      candle.orders
-        ?.filter((o: any) => o.status === STATUS_FILLED)
-        .forEach((order: any) => {
-          points.push({
-            time: candle.time,
-            position: order.price,
-            side: order.side,
-          });
-
-          annotations.push({
-            x: candle.time,
-            y: order.side === SELL_SIDE ? candle.high : candle.low,
-            xref: "x",
-            yref: "y",
-            text: order.side === SELL_SIDE ? "S" : "B",
-            hovertext: `${new Date(order.updated_at).toLocaleString()}
-                      <br>ID: ${order.id}
-                      <br>Price: ${formatNumber(order.price, 2)}
-                      <br>Size: ${formatNumber(order.quantity, 4)}
-                      <br>Type: ${order.type}${order.profit ? `<br>Profit: ${formatPercent(order.profit)}` : ""}`,
-            showarrow: true,
-            arrowcolor: order.side === SELL_SIDE ? "#ef4444" : "#10b981",
-            valign: order.side === SELL_SIDE ? "top" : "bottom",
-            borderpad: 4,
-            arrowhead: 2,
-            ax: 0,
-            ay: order.side === SELL_SIDE ? -20 : 20,
-            font: {
-              size: 11,
-              color: order.side === SELL_SIDE ? "#ef4444" : "#10b981",
-              family: "Inter, sans-serif",
-            },
-          });
-        });
-    });
-
-    const sellPoints = points.filter((p) => p.side === SELL_SIDE);
-    const buyPoints = points.filter((p) => p.side === BUY_SIDE);
-
-    const traces: any[] = [
-      {
-        x: times,
-        close: data.candles.map((c: any) => c.close),
-        high: data.candles.map((c: any) => c.high),
-        low: data.candles.map((c: any) => c.low),
-        open: data.candles.map((c: any) => c.open),
-        type: 'candlestick',
-        name: 'Price',
-        increasing: { line: { color: "#10b981" } },
-        decreasing: { line: { color: "#ef4444" } },
-        yaxis: 'y'
-      },
-      {
-        name: "Buy",
-        x: buyPoints.map((p) => p.time),
-        y: buyPoints.map((p) => p.position),
-        mode: "markers",
-        type: "scatter",
-        marker: {
-          color: "#10b981",
-          size: 10,
-          symbol: "triangle-up",
-          line: { color: "#059669", width: 1 },
-        },
-        hovertemplate: "Buy: %{y}<extra></extra>",
-      },
-      {
-        name: "Sell",
-        x: sellPoints.map((p) => p.time),
-        y: sellPoints.map((p) => p.position),
-        mode: "markers",
-        type: "scatter",
-        marker: {
-          color: "#ef4444",
-          size: 10,
-          symbol: "triangle-down",
-          line: { color: "#dc2626", width: 1 },
-        },
-        hovertemplate: "Sell: %{y}<extra></extra>",
-      }
-    ];
-
-    if (showVolume) {
-      traces.push({
-        x: times,
-        y: data.candles.map((c: any) => c.volume),
-        type: 'bar',
-        name: 'Volume',
-        yaxis: 'y2',
-        marker: {
-          color: data.candles.map((c: any) => c.close >= c.open ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)'),
-          line: { width: 0 }
-        }
-      });
-    }
-
-    let standaloneIndicatorsCount = 0;
-    let renderedStandaloneIndicators: any[] = [];
-    const layoutAxes: any = {};
-
-    if (data.indicators) {
-      if (showIndicators) {
-        data.indicators.filter((i: any) => i.overlay).forEach((indicator: any) => {
-          indicator.metrics.forEach((metric: any) => {
-            traces.push({
-              x: metric.time,
-              y: metric.value,
-              type: metric.style || 'scatter',
-              mode: 'lines',
-              name: `${indicator.name} ${metric.name || ""}`,
-              line: { color: metric.color || '#3b82f6', width: 2 },
-              yaxis: 'y',
-              hovertemplate: "%{y:.2f}<extra></extra>"
-            });
-          });
-        });
-      }
-
-      if (showSubIndicators) {
-        const standaloneIndicators = data.indicators.filter((i: any) => !i.overlay);
-        renderedStandaloneIndicators = standaloneIndicators.filter((ind: any) => activeSubIndicators.has(ind.name));
-        standaloneIndicatorsCount = renderedStandaloneIndicators.length;
-      }
-    }
-
-    let chartHeight = 600;
-    let yaxisDomain = [0.2, 1];
-    let yaxis2Domain = [0, 0.15];
-    const shapes: any[] = (data.shapes || []).map((s: any) => ({
-      type: "rect",
-      xref: "x",
-      yref: "y",
-      x0: s.x0,
-      y0: s.y0,
-      x1: s.x1,
-      y1: s.y1,
-      line: { width: 0 },
-      fillcolor: s.color,
-      layer: "below",
-    }));
-
-    if (showSubIndicators && standaloneIndicatorsCount > 0) {
-      const subHeightPx = 150;
-      const baseHeightPx = 600;
-      chartHeight = baseHeightPx + (standaloneIndicatorsCount * subHeightPx);
-
-      const singleSubRatio = subHeightPx / chartHeight;
-      const totalSubHeightRatio = (standaloneIndicatorsCount * subHeightPx) / chartHeight;
-      const baseRatio = baseHeightPx / chartHeight;
-
-      yaxisDomain = [totalSubHeightRatio + baseRatio * 0.2, 1];
-      yaxis2Domain = [totalSubHeightRatio, totalSubHeightRatio + baseRatio * 0.15];
-
-      let standaloneIndicatorIndex = 0;
-
-      renderedStandaloneIndicators.forEach((indicator) => {
-        const axisNumber = standaloneIndicatorIndex + 3;
-        const heightEnd = totalSubHeightRatio - standaloneIndicatorIndex * singleSubRatio;
-        const heightStart = heightEnd - singleSubRatio;
-
-        layoutAxes["yaxis" + axisNumber] = {
-          title: indicator.name,
-          domain: [heightStart, heightEnd - 0.02],
-          showgrid: true,
-          gridcolor: "var(--border-color)",
-          side: "left",
-          tickformat: ",.2f"
-        };
-
-        if (indicator.name.startsWith("RSI") || indicator.name.startsWith("Stoch")) {
-          layoutAxes["yaxis" + axisNumber].range = [0, 100];
-          layoutAxes["yaxis" + axisNumber].tickvals = [20, 30, 70, 80];
-          
-          shapes.push({
-            type: "line", xref: "paper", yref: "y" + axisNumber,
-            x0: 0, y0: 30, x1: 1, y1: 30,
-            line: { color: "var(--text-tertiary)", width: 1, dash: "dot" }
-          });
-          shapes.push({
-            type: "line", xref: "paper", yref: "y" + axisNumber,
-            x0: 0, y0: 70, x1: 1, y1: 70,
-            line: { color: "var(--text-tertiary)", width: 1, dash: "dot" }
-          });
-        }
-
-        indicator.metrics.forEach((metric: any) => {
-          traces.push({
-            name: `${indicator.name}${metric.name ? " - " + metric.name : ""}`,
-            x: metric.time,
-            y: metric.value,
-            type: metric.style || "scatter",
-            mode: "lines",
-            yaxis: "y" + axisNumber,
-            line: { color: metric.color || "#8b5cf6", width: 1.5 },
-            hovertemplate: "%{y:.2f}<extra></extra>",
-          });
-        });
-
-        standaloneIndicatorIndex++;
-      });
-    }
-
-    const layout = {
-      height: chartHeight,
-      autosize: true,
-      margin: { t: 20, r: 20, l: 60, b: 40 },
-      paper_bgcolor: 'transparent',
-      plot_bgcolor: 'transparent',
-      font: { family: "Inter, sans-serif", color: 'var(--text-primary)' },
-      dragmode: "pan" as any,
-      xaxis: {
-        type: 'date' as any,
-        gridcolor: 'var(--border-color)',
-        rangeslider: { visible: false },
-        showline: true,
-        linecolor: "var(--border-color)"
-      },
-      yaxis: {
-        domain: yaxisDomain,
-        gridcolor: 'var(--border-color)',
-        title: { text: 'Price' },
-        side: "left" as any,
-        tickformat: ",.8~f",
-        showline: true,
-        linecolor: "var(--border-color)"
-      },
-      yaxis2: {
-        domain: yaxis2Domain,
-        gridcolor: 'var(--border-color)',
-        showticklabels: false,
-        side: "right" as any,
-        showgrid: false
-      },
-      showlegend: true,
-      legend: { 
-        orientation: 'h' as any, 
-        yanchor: "bottom" as any,
-        y: 1.02,
-        xanchor: "left" as any,
-        x: 0,
-        bgcolor: "#ffffff",
-        bordercolor: "#e2e8f0",
-        borderwidth: 1
-      },
-      hovermode: "x unified" as any,
-      hoverlabel: {
-        bgcolor: "#ffffff",
-        font: { color: "#0f172a" },
-        bordercolor: "#e2e8f0",
-      },
-      annotations,
-      shapes,
-      ...layoutAxes
-    };
-
-    return (
-      <Plot
-        data={traces}
-        layout={layout}
-        useResizeHandler
-        className="w-full"
-        style={{ height: chartHeight }}
-        config={{ responsive: true, scrollZoom: true, displayModeBar: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] }}
-      />
-    );
-  };
-
+  
   const renderEquityChart = () => {
     if (!data?.equity_values?.length) return null;
 
     const equityData = {
       name: `Equity (${data.quote || 'USDT'})`,
-      x: data.equity_values.map((v: any) => v.time),
+      x: data.equity_values.map((v: any) => formatPlotlyLocalDate(v.time)),
       y: data.equity_values.map((v: any) => v.value),
       type: "scatter",
       mode: "lines",
@@ -537,7 +240,7 @@ export function Chart() {
   
     const assetData = {
       name: `Position (${data.asset || 'ASSET'})`,
-      x: (data.asset_values || []).map((v: any) => v.time),
+      x: (data.asset_values || []).map((v: any) => formatPlotlyLocalDate(v.time)),
       y: (data.asset_values || []).map((v: any) => v.value),
       type: "scatter",
       mode: "lines",
@@ -556,9 +259,9 @@ export function Chart() {
         type: "rect",
         xref: "x",
         yref: "y",
-        x0: data.max_drawdown.start,
+        x0: formatPlotlyLocalDate(data.max_drawdown.start),
         y0: Math.min(...data.equity_values.map((v: any) => v.value)) * 0.95,
-        x1: data.max_drawdown.end,
+        x1: formatPlotlyLocalDate(data.max_drawdown.end),
         y1: topPosition,
         line: { width: 0 },
         fillcolor: "rgba(239, 68, 68, 0.15)",
@@ -572,7 +275,7 @@ export function Chart() {
       );
   
       annotations.push({
-        x: annotationPosition,
+        x: formatPlotlyLocalDate(annotationPosition),
         y: topPosition - (topPosition * 0.05),
         xref: "x",
         yref: "y",
@@ -598,7 +301,9 @@ export function Chart() {
         type: 'date' as any,
         gridcolor: 'var(--border-color)',
         showline: true,
-        linecolor: "var(--border-color)"
+        linecolor: "var(--border-color)",
+        tickformat: "%H:%M\\n%Y-%m-%d",
+        hoverformat: "%Y-%m-%d %H:%M:%S"
       },
       yaxis: {
         title: `Equity (${data.quote || 'USDT'})`,
@@ -660,7 +365,7 @@ export function Chart() {
 
     const cumulativeProfitTrace = {
       name: "Cumulative Profit",
-      x: cumulativeProfits.map(p => p.time),
+      x: cumulativeProfits.map(p => formatPlotlyLocalDate(p.time)),
       y: cumulativeProfits.map(p => p.profit * 100),
       type: "scatter",
       mode: "lines",
@@ -671,7 +376,7 @@ export function Chart() {
 
     const tradeProfits = {
       name: "Trade Profit",
-      x: stats.allOrders.map((o: any) => o.time),
+      x: stats.allOrders.map((o: any) => formatPlotlyLocalDate(o.time)),
       y: stats.allOrders.map((o: any) => (o.profit || 0) * 100),
       type: "bar",
       marker: {
@@ -694,7 +399,9 @@ export function Chart() {
         type: 'date' as any,
         gridcolor: 'var(--border-color)',
         showline: true,
-        linecolor: "var(--border-color)"
+        linecolor: "var(--border-color)",
+        tickformat: "%H:%M\\n%Y-%m-%d",
+        hoverformat: "%Y-%m-%d %H:%M:%S"
       },
       yaxis: {
         title: "Cumulative Profit (%)",
@@ -765,7 +472,7 @@ export function Chart() {
           <tbody>
             {recentOrders.map((order: any, idx: number) => (
               <tr key={idx} className="border-b border-[var(--border-color)] hover:bg-[var(--bg-secondary)] transition-colors">
-                <td className="px-4 py-3 text-[var(--text-secondary)] font-medium tabular-nums">{new Date(order.time).toLocaleString()}</td>
+                <td className="px-4 py-3 text-[var(--text-secondary)] font-medium tabular-nums">{formatClientDateTime(order.time)}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${
                     order.side === BUY_SIDE ? 'bg-[var(--success-bg)] text-[var(--success-color)]' : 'bg-[var(--error-bg)] text-[var(--error-color)]'
@@ -1019,7 +726,7 @@ export function Chart() {
             {summary?.pairs?.map((p: any) => (
               <Link
                 key={p.pair || p}
-                to={`/chart?pair=${p.pair || p}`}
+                to={`/backtesting/dashboard?pair=${p.pair || p}`}
                 className={`px-4 py-2 text-sm rounded-md font-medium transition-colors ${
                   (p.pair || p) === currentPair
                     ? 'bg-[var(--brand-color)] text-white'
@@ -1055,50 +762,7 @@ export function Chart() {
             {renderStatsGrid()}
 
             {/* Main Chart */}
-            <div className="bg-[var(--bg-primary)] p-5 rounded-xl border border-[var(--border-color)] shadow-[var(--input-shadow)] mt-6">
-              <div className="flex justify-between items-center mb-6 border-b border-[var(--border-color)] pb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-[var(--text-primary)]">Price Action & Execution</h2>
-                  <p className="text-sm text-[var(--text-secondary)] mt-1">Interactive chart with indicators and order history</p>
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={() => setShowIndicators(!showIndicators)}
-                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showIndicators ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
-                  >
-                    Indicators
-                  </button>
-                  <button
-                    onClick={() => setShowVolume(!showVolume)}
-                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showVolume ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
-                  >
-                    Volume
-                  </button>
-                  <button
-                    onClick={() => setShowSubIndicators(!showSubIndicators)}
-                    className={`px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${showSubIndicators ? 'bg-[var(--brand-accent)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:bg-[var(--border-color)]'}`}
-                  >
-                    Sub-Indicators
-                  </button>
-                </div>
-              </div>
-              
-              {showSubIndicators && data?.indicators?.filter((i: any) => !i.overlay).length > 0 && (
-                <div className="flex gap-2 mb-4 justify-end flex-wrap">
-                  {data.indicators.filter((i: any) => !i.overlay).map((ind: any) => (
-                    <button
-                      key={ind.name}
-                      onClick={() => toggleSubIndicator(ind.name)}
-                      className={`px-2 py-1 text-xs rounded-md transition-colors ${activeSubIndicators.has(ind.name) ? 'bg-[var(--brand-color)] text-white' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-white'}`}
-                    >
-                      {ind.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              
-              {renderMainChart()}
-            </div>
+            <PriceChart data={data} />
 
             {renderEquityChart()}
             {renderPerformanceChart()}

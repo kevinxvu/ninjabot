@@ -1,12 +1,26 @@
 import { useEffect, useState, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import api from '../api/client';
-import ReactPlotly from 'react-plotly.js';
-const Plot = (ReactPlotly as any).default || ReactPlotly;
 import { Activity } from 'lucide-react';
+import {
+  CryptoLiveChart,
+  DEFAULT_LIVE_CHART_PAIR,
+  DEFAULT_LIVE_CHART_TIMEFRAME,
+} from '../components/CryptoLiveChart';
 
 interface TickerData {
   [pair: string]: number;
+}
+
+const DASHBOARD_PAIR_KEY = 'ninjabot.dashboard.mainPair';
+const DASHBOARD_TIMEFRAME_KEY = 'ninjabot.dashboard.timeframe';
+
+function getStoredDashboardValue(key: string, fallback: string) {
+  try {
+    return window.localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export function Dashboard() {
@@ -14,41 +28,63 @@ export function Dashboard() {
   const [candles, setCandles] = useState<any[]>([]);
   const [pairsInfo, setPairsInfo] = useState<any>({});
   const [loading, setLoading] = useState(true);
-  const [mainPair, setMainPair] = useState('BTCUSDT');
-  const [timeframe, setTimeframe] = useState('1d');
+  const [chartError, setChartError] = useState<string | null>(null);
+  const [mainPair, setMainPair] = useState(() => getStoredDashboardValue(DASHBOARD_PAIR_KEY, DEFAULT_LIVE_CHART_PAIR));
+  const [timeframe, setTimeframe] = useState(() => getStoredDashboardValue(DASHBOARD_TIMEFRAME_KEY, DEFAULT_LIVE_CHART_TIMEFRAME));
   const [portfolioValue, setPortfolioValue] = useState<number | null>(null);
   
   const defaultPairs = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT'];
 
   const wsRef = useRef<WebSocket | null>(null);
+  const marketRequestRef = useRef(0);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DASHBOARD_PAIR_KEY, mainPair);
+      window.localStorage.setItem(DASHBOARD_TIMEFRAME_KEY, timeframe);
+    } catch (e) {
+      console.error('Không thể lưu lựa chọn dashboard:', e);
+    }
+  }, [mainPair, timeframe]);
 
   useEffect(() => {
     let isMounted = true;
+    const requestId = marketRequestRef.current + 1;
+    marketRequestRef.current = requestId;
     
     // Gọi API REST lần đầu để tải nến cũ và thông tin pair
     const fetchInitialData = async () => {
       try {
         setLoading(true);
-        // Using axios
-        const [tData, cData, iData, pData] = await Promise.all([
+        setCandles([]);
+        setChartError(null);
+
+        const [tData, cData, iData, pData] = await Promise.allSettled([
           api.get(`/api/market/tickers?pairs=${defaultPairs.join(',')}`),
-          api.get(`/api/market/candles?pair=${mainPair}&timeframe=${timeframe}`),
+          api.get(`/api/market/candles?pair=${encodeURIComponent(mainPair)}&timeframe=${encodeURIComponent(timeframe)}`),
           api.get(`/api/pairs?pairs=${defaultPairs.join(',')}`),
           api.get(`/api/market/portfolio`)
         ]);
 
-        if (isMounted) {
-          if (tData) {
-            setTickers(tData as unknown as TickerData);
+        if (isMounted && marketRequestRef.current === requestId) {
+          if (tData.status === 'fulfilled' && tData.value) {
+            setTickers(tData.value as unknown as TickerData);
           }
-          if (cData && Array.isArray(cData)) {
-            setCandles(cData);
+          if (cData.status === 'fulfilled' && Array.isArray(cData.value) && cData.value.length > 0) {
+            setCandles(cData.value);
+          } else {
+            setCandles([]);
+            setChartError(
+              cData.status === 'rejected'
+                ? `Could not load candle data for ${mainPair} (${timeframe}).`
+                : `No candle data for ${mainPair} (${timeframe}).`
+            );
           }
-          if (iData) {
-            setPairsInfo(iData);
+          if (iData.status === 'fulfilled' && iData.value) {
+            setPairsInfo(iData.value);
           }
-          if (pData) {
-            const portData = pData as { error?: string, total_value_usdt?: number };
+          if (pData.status === 'fulfilled' && pData.value) {
+            const portData = pData.value as { error?: string, total_value_usdt?: number };
             if (!portData.error && portData.total_value_usdt !== undefined) {
               setPortfolioValue(portData.total_value_usdt);
             }
@@ -56,8 +92,12 @@ export function Dashboard() {
         }
       } catch (e) {
         console.error('Lỗi khi tải dữ liệu ban đầu:', e);
+        if (isMounted && marketRequestRef.current === requestId) {
+          setCandles([]);
+          setChartError(`Could not load candle data for ${mainPair} (${timeframe}).`);
+        }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted && marketRequestRef.current === requestId) setLoading(false);
       }
     };
 
@@ -93,6 +133,7 @@ export function Dashboard() {
         } 
         else if (msg.type === 'CANDLE' && msg.pair === mainPair) {
           const newCandle = msg.data;
+          setChartError(null);
           
           setCandles(prev => {
             if (prev.length === 0) return [newCandle];
@@ -119,7 +160,11 @@ export function Dashboard() {
 
     return () => {
       isMounted = false;
-      if (ws.readyState === WebSocket.OPEN) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
         ws.close();
       }
     };
@@ -130,20 +175,6 @@ export function Dashboard() {
       style: 'currency',
       currency: 'USD'
     }).format(price || 0);
-  };
-
-  const chartData = {
-    x: candles.map(c => new Date(c.Time).toISOString()),
-    close: candles.map(c => c.Close),
-    decreasing: { line: { color: '#ef4444' } },
-    high: candles.map(c => c.High),
-    increasing: { line: { color: '#22c55e' } },
-    line: { color: 'rgba(31,119,180,1)' },
-    low: candles.map(c => c.Low),
-    open: candles.map(c => c.Open),
-    type: 'candlestick',
-    xaxis: 'x',
-    yaxis: 'y'
   };
 
   return (
@@ -181,103 +212,16 @@ export function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Chart Area */}
-            <div className="lg:col-span-2 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-color)] shadow-sm p-4 flex flex-col">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-lg">Crypto Live</h2>
-                <div className="flex gap-2">
-                  <select 
-                    className="text-sm px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded cursor-pointer font-medium outline-none"
-                    value={mainPair}
-                    onChange={(e) => setMainPair(e.target.value)}
-                  >
-                    <option value="BTCUSDT">BTCUSDT</option>
-                    <option value="ETHUSDT">ETHUSDT</option>
-                    <option value="SOLUSDT">SOLUSDT</option>
-                    <option value="BNBUSDT">BNBUSDT</option>
-                  </select>
-                  <select 
-                    className="text-sm px-2 py-1 bg-[var(--bg-secondary)] border border-[var(--border-color)] rounded cursor-pointer outline-none"
-                    value={timeframe}
-                    onChange={(e) => setTimeframe(e.target.value)}
-                  >
-                    <option value="1m">1m</option>
-                    <option value="15m">15m</option>
-                    <option value="1h">1H</option>
-                    <option value="4h">4H</option>
-                    <option value="1d">1D</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex-1 min-h-[400px]">
-                {loading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="spinner w-8 h-8"></div>
-                  </div>
-                ) : (
-                    <Plot
-                    data={[chartData as any]}
-                    layout={{
-                      dragmode: 'pan',
-                      autosize: true,
-                      margin: { l: 40, r: 80, t: 20, b: 40 },
-                      paper_bgcolor: 'transparent',
-                      plot_bgcolor: 'transparent',
-                      uirevision: mainPair + timeframe,
-                      xaxis: {
-                        type: 'date',
-                        gridcolor: 'rgba(0,0,0,0.05)',
-                        rangeslider: { visible: false }
-                      },
-                      yaxis: {
-                        gridcolor: 'rgba(0,0,0,0.05)',
-                        side: 'right'
-                      },
-                      showlegend: false,
-                      shapes: [
-                        {
-                          type: 'line',
-                          xref: 'paper',
-                          x0: 0,
-                          x1: 1,
-                          yref: 'y',
-                          y0: tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0),
-                          y1: tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0),
-                          line: {
-                            color: '#6366f1',
-                            width: 1,
-                            dash: 'dot'
-                          }
-                        }
-                      ],
-                      annotations: [
-                        {
-                          xref: 'paper',
-                          yref: 'y',
-                          x: 1,
-                          y: tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0),
-                          xanchor: 'left',
-                          yanchor: 'middle',
-                          text: formatPrice(tickers[mainPair] || (candles.length > 0 ? candles[candles.length - 1].Close : 0)),
-                          showarrow: false,
-                          font: {
-                            color: '#ffffff',
-                            size: 11
-                          },
-                          bgcolor: '#6366f1',
-                          borderpad: 4,
-                          bordercolor: '#6366f1',
-                          borderwidth: 1
-                        }
-                      ]
-                    }}
-                    useResizeHandler={true}
-                    style={{ width: '100%', height: '100%' }}
-                    config={{ responsive: true, scrollZoom: true, displayModeBar: true, displaylogo: false, modeBarButtonsToRemove: ["lasso2d", "select2d"] }}
-                  />
-                )}
-              </div>
-            </div>
+            <CryptoLiveChart
+              candles={candles}
+              currentPrice={tickers[mainPair]}
+              pair={mainPair}
+              timeframe={timeframe}
+              loading={loading}
+              error={chartError}
+              onPairChange={setMainPair}
+              onTimeframeChange={setTimeframe}
+            />
 
             {/* Right Sidebar (Balance / Action) */}
             <div className="space-y-6">

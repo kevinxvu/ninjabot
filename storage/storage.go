@@ -17,6 +17,8 @@ type Storage interface {
 	GetSessionsByType(sessionType string) ([]*model.Session, error)
 	GetSessionByID(id string) (*model.Session, error)
 	DeleteSession(id string) error
+	CreateSessionEvent(event *model.SessionEvent) error
+	GetSessionEvents(sessionID string) ([]model.SessionEvent, error)
 }
 
 func WithStatusIn(status ...model.OrderStatusType) OrderFilter {

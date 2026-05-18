@@ -3,7 +3,7 @@ import { Search, X, CheckSquare, Loader2 } from 'lucide-react';
 import api from '../api/client';
 
 interface MultiSelectPairsProps {
-  value: string; // Comma separated string e.g. "BTCUSDT,ETHUSDT"
+  value: string;
   maxPairs?: number;
   onChange: (value: string) => void;
 }
@@ -17,7 +17,6 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
 
   const selectedPairs = value ? value.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-  // Handle outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
@@ -28,7 +27,6 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch available pairs
   useEffect(() => {
     async function fetchPairs() {
       setLoading(true);
@@ -92,11 +90,9 @@ export function MultiSelectPairs({ value, maxPairs, onChange }: MultiSelectPairs
         const aLower = a.toLowerCase();
         const bLower = b.toLowerCase();
 
-        // Exact match
         if (aLower === lowerSearch) return -1;
         if (bLower === lowerSearch) return 1;
 
-        // Default alphabetical
         return a.localeCompare(b);
       });
   };

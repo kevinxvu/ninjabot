@@ -141,3 +141,11 @@ func (b *Bunt) GetSessionByID(id string) (*model.Session, error) {
 func (b *Bunt) DeleteSession(id string) error {
 	return fmt.Errorf("not implemented")
 }
+
+func (b *Bunt) CreateSessionEvent(event *model.SessionEvent) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (b *Bunt) GetSessionEvents(sessionID string) ([]model.SessionEvent, error) {
+	return nil, fmt.Errorf("not implemented")
+}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 
 	"github.com/StudioSol/set"
 	"github.com/stretchr/testify/require"
@@ -145,6 +146,108 @@ func TestChart_CandleAndOrder(t *testing.T) {
 	}
 	shaped := c.ShapesByPair(pair)
 	require.Equal(t, expectShapesByPair, shaped)
+}
+
+func TestChart_OrderBeforeFirstCandle(t *testing.T) {
+	pair := "ETHUSDT"
+	c, err := NewChart()
+	require.NoError(t, err)
+
+	order := model.Order{
+		ID:        1,
+		Pair:      pair,
+		Side:      "BUY",
+		Type:      "MARKET",
+		Status:    "FILLED",
+		Price:     3059.37,
+		Quantity:  1,
+		CreatedAt: time.Date(2021, 9, 26, 20, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2021, 9, 26, 20, 0, 0, 0, time.UTC),
+	}
+	c.OnOrder(order)
+
+	c.OnCandle(model.Candle{
+		Pair:     pair,
+		Time:     time.Date(2021, 9, 26, 20, 0, 0, 0, time.UTC),
+		Open:     3057.67,
+		Close:    3059.37,
+		Low:      3011.00,
+		High:     3115.51,
+		Volume:   87666.8,
+		Complete: true,
+	})
+
+	candles := c.CandlesByPair(pair)
+	require.Len(t, candles, 1)
+	require.Equal(t, []model.Order{order}, candles[0].Orders)
+}
+
+func TestChart_OrderAfterLastCandle(t *testing.T) {
+	pair := "ETHUSDT"
+	c, err := NewChart()
+	require.NoError(t, err)
+
+	c.OnCandle(model.Candle{
+		Pair:     pair,
+		Time:     time.Date(2021, 9, 26, 20, 0, 0, 0, time.UTC),
+		Open:     3057.67,
+		Close:    3059.37,
+		Low:      3011.00,
+		High:     3115.51,
+		Volume:   87666.8,
+		Complete: true,
+	})
+
+	order := model.Order{
+		ID:        1,
+		Pair:      pair,
+		Side:      "BUY",
+		Type:      "MARKET",
+		Status:    "FILLED",
+		Price:     3059.37,
+		Quantity:  1,
+		CreatedAt: time.Date(2021, 9, 26, 20, 1, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2021, 9, 26, 20, 1, 0, 0, time.UTC),
+	}
+	c.OnOrder(order)
+
+	candles := c.CandlesByPair(pair)
+	require.Len(t, candles, 1)
+	require.Equal(t, []model.Order{order}, candles[0].Orders)
+	require.Empty(t, c.candles[pair][0].Orders)
+}
+
+func TestChart_IndicatorsByPairWithoutDataframe(t *testing.T) {
+	c, err := NewChart(WithStrategyIndicators(strategies.NewCrossEMA("1m", 8, 21)))
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		require.Empty(t, c.IndicatorsByPair("ETHUSDT"))
+	})
+}
+
+func TestChart_IndicatorsByPairWaitsForStrategyWarmup(t *testing.T) {
+	pair := "ETHUSDT"
+	c, err := NewChart(WithStrategyIndicators(strategies.NewCrossEMA("1m", 8, 21)))
+	require.NoError(t, err)
+
+	for i := 0; i < 5; i++ {
+		price := 3000 + float64(i)
+		c.OnCandle(model.Candle{
+			Pair:     pair,
+			Time:     time.Date(2021, 9, 26, 20, i, 0, 0, time.UTC),
+			Open:     price,
+			Close:    price + 1,
+			Low:      price - 1,
+			High:     price + 2,
+			Volume:   100,
+			Complete: true,
+		})
+	}
+
+	require.NotPanics(t, func() {
+		require.Empty(t, c.IndicatorsByPair(pair))
+	})
 }
 
 func TestChart_WithPaperWallet(t *testing.T) {

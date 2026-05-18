@@ -147,7 +147,7 @@ func (s *Server) HandlePairs(w http.ResponseWriter, r *http.Request) {
 			pairs = append(pairs, p)
 		}
 		s.mu.Unlock()
-		
+
 		sort.Strings(pairs)
 
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{"pairs": pairs}); err != nil {
@@ -579,13 +579,51 @@ func (s *Server) HandleListRealtimeSignals(w http.ResponseWriter, r *http.Reques
 			sess.Status = "running"
 		} else if sess.Status == "running" {
 			// It's in DB as running but not in memory
-			sess.Status = "stopped" 
+			sess.Status = "stopped"
 			s.db.UpdateSession(sess)
 		}
 		s.signalMgr.mu.Unlock()
 	}
 
 	writeJSON(w, http.StatusOK, sessions)
+}
+
+func (s *Server) HandleSessionChart(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) < 3 {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	id := parts[2] // Lấy session ID từ URL
+
+	chart, err := s.signalMgr.GetSessionChart(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	session, err := s.signalMgr.db.GetSessionByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-type", "application/json")
+
+	asset, quote := exchange.SplitAssetQuote(session.Pair)
+	assetValues, equityValues := chart.EquityValuesByPair(session.Pair)
+
+	// Trả về JSON giống hệt với /api/data của backtesting
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"candles":       chart.CandlesByPair(session.Pair),
+		"indicators":    chart.IndicatorsByPair(session.Pair),
+		"shapes":        chart.ShapesByPair(session.Pair),
+		"events":        sessionEventsForDisplay(session),
+		"asset_values":  assetValues,
+		"equity_values": equityValues,
+		"quote":         quote,
+		"asset":         asset,
+	})
 }
 
 // HandleGetRealtimeSignal GET /api/realtime-signals/:id
@@ -615,7 +653,7 @@ func (s *Server) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request)
 		session.Status = "running"
 	}
 	s.signalMgr.mu.Unlock()
-	
+
 	if session.Status == "running" {
 		balances, err := s.signalMgr.GetSessionBalances(sessionID)
 		if err == nil {
@@ -624,7 +662,7 @@ func (s *Server) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request)
 	} else {
 		// Calculate from orders if not running
 		balancesMap := CalculateBalancesFromOrders(session)
-		
+
 		for asset, amount := range balancesMap {
 			if amount > 0.00000001 {
 				session.Balances = append(session.Balances, model.Balance{
@@ -635,6 +673,7 @@ func (s *Server) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request)
 			}
 		}
 	}
+	session.Events = sessionEventsForDisplay(session)
 
 	writeJSON(w, http.StatusOK, session)
 }

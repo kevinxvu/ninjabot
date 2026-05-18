@@ -90,6 +90,9 @@ func (c *Chart) OnOrder(order model.Order) {
 	c.Lock()
 	defer c.Unlock()
 
+	if c.ordersIDsByPair[order.Pair] == nil {
+		c.ordersIDsByPair[order.Pair] = set.NewLinkedHashSetINT64()
+	}
 	c.ordersIDsByPair[order.Pair].Add(order.ID)
 	c.orderByID[order.ID] = order
 }
@@ -117,7 +120,9 @@ func (c *Chart) OnCandle(candle model.Candle) {
 				Pair:     candle.Pair,
 				Metadata: make(map[string]model.Series[float64]),
 			}
-			c.ordersIDsByPair[candle.Pair] = set.NewLinkedHashSetINT64()
+			if c.ordersIDsByPair[candle.Pair] == nil {
+				c.ordersIDsByPair[candle.Pair] = set.NewLinkedHashSetINT64()
+			}
 		}
 
 		c.dataframe[candle.Pair].Close = append(c.dataframe[candle.Pair].Close, candle.Close)
@@ -163,9 +168,17 @@ func (c *Chart) EquityValuesByPair(pair string) ([]assetValue, []assetValue) {
 }
 
 func (c *Chart) IndicatorsByPair(pair string) []plotIndicator {
+	c.Lock()
+	defer c.Unlock()
+
 	indicators := make([]plotIndicator, 0)
+	dataframe := c.dataframe[pair]
+	if dataframe == nil {
+		return indicators
+	}
+
 	for _, i := range c.indicators {
-		i.Load(c.dataframe[pair])
+		i.Load(dataframe)
 		indicator := plotIndicator{
 			Name:    i.Name(),
 			Overlay: i.Overlay(),
@@ -187,8 +200,11 @@ func (c *Chart) IndicatorsByPair(pair string) []plotIndicator {
 	}
 
 	if c.strategy != nil {
-		warmup := c.strategy.WarmupPeriod()
-		strategyIndicators := c.strategy.Indicators(c.dataframe[pair])
+		if len(dataframe.Close) < c.strategy.WarmupPeriod() {
+			return indicators
+		}
+
+		strategyIndicators := c.strategy.Indicators(dataframe)
 		for _, i := range strategyIndicators {
 			indicator := plotIndicator{
 				Name:    i.GroupName,
@@ -198,7 +214,7 @@ func (c *Chart) IndicatorsByPair(pair string) []plotIndicator {
 			}
 
 			for _, metric := range i.Metrics {
-				if len(metric.Values) < warmup {
+				if len(metric.Values) <= i.Warmup || len(i.Time) <= i.Warmup {
 					continue
 				}
 
@@ -218,7 +234,19 @@ func (c *Chart) IndicatorsByPair(pair string) []plotIndicator {
 }
 
 func (c *Chart) CandlesByPair(pair string) []Candle {
-	candles := make([]Candle, len(c.candles[pair]))
+	c.Lock()
+	defer c.Unlock()
+
+	sourceCandles := c.candles[pair]
+	candles := make([]Candle, len(sourceCandles))
+	for i := range sourceCandles {
+		candles[i] = sourceCandles[i]
+		candles[i].Orders = append([]model.Order(nil), sourceCandles[i].Orders...)
+	}
+	if len(candles) == 0 {
+		return candles
+	}
+
 	orderSet := c.ordersIDsByPair[pair]
 	if orderSet == nil {
 		return candles
@@ -229,15 +257,14 @@ func (c *Chart) CandlesByPair(pair string) []Candle {
 		orderCheck[id] = true
 	}
 
-	for i := range c.candles[pair] {
-		candles[i] = c.candles[pair][i]
+	for i := range sourceCandles {
 		for id := range orderSet.Iter() {
 			order := c.orderByID[id]
 
-			if i < len(c.candles[pair])-1 &&
-				(order.UpdatedAt.After(c.candles[pair][i].Time) &&
-					order.UpdatedAt.Before(c.candles[pair][i+1].Time)) ||
-				order.UpdatedAt.Equal(c.candles[pair][i].Time) {
+			if (i < len(sourceCandles)-1 &&
+				order.UpdatedAt.After(sourceCandles[i].Time) &&
+				order.UpdatedAt.Before(sourceCandles[i+1].Time)) ||
+				order.UpdatedAt.Equal(sourceCandles[i].Time) {
 
 				delete(orderCheck, id)
 				candles[i].Orders = append(candles[i].Orders, order)
@@ -247,8 +274,9 @@ func (c *Chart) CandlesByPair(pair string) []Candle {
 
 	for id := range orderCheck {
 		order := c.orderByID[id]
-		if order.UpdatedAt.After(c.candles[pair][len(c.candles)-1].Time) {
-			c.candles[pair][len(c.candles)-1].Orders = append(c.candles[pair][len(c.candles)-1].Orders, order)
+		lastIndex := len(sourceCandles) - 1
+		if order.UpdatedAt.After(sourceCandles[lastIndex].Time) {
+			candles[lastIndex].Orders = append(candles[lastIndex].Orders, order)
 		}
 	}
 

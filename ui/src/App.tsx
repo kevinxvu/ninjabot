@@ -1,6 +1,6 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Home } from './pages/Home';
-import { Chart } from './pages/Chart';
+import { SetupBacktest } from './pages/SetupBacktest';
+import { BacktestDashboard } from './pages/BacktestDashboard';
 import { Dashboard } from './pages/Dashboard';
 import { SetupSignal } from './pages/SetupSignal';
 import { SignalDashboard } from './pages/SignalDashboard';
@@ -13,8 +13,8 @@ function App() {
       <Routes>
         {/* Set Dashboard as the default route */}
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/backtesting" element={<Home />} />
-        <Route path="/chart" element={<Chart />} />
+        <Route path="/backtesting" element={<SetupBacktest />} />
+        <Route path="/backtesting/dashboard" element={<BacktestDashboard />} />
         
         {/* Realtime Signals Routes */}
         <Route path="/realtime-signals" element={<SignalsList />} />

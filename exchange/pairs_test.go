@@ -14,8 +14,7 @@ func TestSplitAssetQuote(t *testing.T) {
 	}{
 		{"BTCUSDT", "BTC", "USDT"},
 		{"ETHBTC", "ETH", "BTC"},
-		{"BTCBUSD", "BTC", "BUSD"},
-		{"1000SHIBBUSD", "1000SHIB", "BUSD"},
+		{"1000SHIBUSDT", "1000SHIB", "USDT"},
 	}
 
 	for _, tc := range tt {

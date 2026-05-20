@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"strings"
 
+	serverhandler "github.com/rodrigo-brito/ninjabot/server/handler"
 	"github.com/rodrigo-brito/ninjabot/ui"
 )
 
-// SetupRouter creates a new ServeMux and registers all routes
-func SetupRouter(srv *Server) *http.ServeMux {
+// SetupRouter creates a new ServeMux and registers all routes.
+func SetupRouter(h *serverhandler.Handler) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Extract the "dist" directory from the embedded files
 	distFS, err := fs.Sub(ui.Files, "dist")
 	if err != nil {
 		panic(err)
@@ -21,43 +21,42 @@ func SetupRouter(srv *Server) *http.ServeMux {
 	fileServer := http.FileServer(http.FS(distFS))
 
 	// API routes
-	mux.HandleFunc("/api/health", srv.HandleHealth)
-	mux.HandleFunc("/api/history", srv.HandleTradingHistoryData)
-	mux.HandleFunc("/api/data", srv.HandleChartData)
-	mux.HandleFunc("/api/backtest", srv.HandleBacktest)
-	mux.HandleFunc("/api/summary", srv.HandleSummary)
-	mux.HandleFunc("/api/pairs", srv.HandlePairs)
-	mux.HandleFunc("/api/market/tickers", srv.HandleMarketTickers)
-	mux.HandleFunc("/api/market/candles", srv.HandleMarketCandles)
-	mux.HandleFunc("/api/market/portfolio", srv.HandleMarketPortfolio)
-	
+	mux.HandleFunc("/api/health", serverhandler.Middleware(h.HandleHealth))
+	mux.HandleFunc("/api/history", serverhandler.Middleware(h.HandleTradingHistoryData))
+	mux.HandleFunc("/api/data", serverhandler.Middleware(h.HandleChartData))
+	mux.HandleFunc("/api/backtest", serverhandler.Middleware(h.HandleBacktest))
+	mux.HandleFunc("/api/summary", serverhandler.Middleware(h.HandleSummary))
+	mux.HandleFunc("/api/pairs", serverhandler.Middleware(h.HandlePairs))
+	mux.HandleFunc("/api/market/tickers", serverhandler.Middleware(h.HandleMarketTickers))
+	mux.HandleFunc("/api/market/candles", serverhandler.Middleware(h.HandleMarketCandles))
+	mux.HandleFunc("/api/market/portfolio", serverhandler.Middleware(h.HandleMarketPortfolio))
+
 	// Realtime Signals API
-	mux.HandleFunc("/api/realtime-signals", srv.HandleListRealtimeSignals)
-	mux.HandleFunc("/api/realtime-signals/start", srv.HandleStartRealtimeSignal)
+	mux.HandleFunc("/api/realtime-signals", serverhandler.Middleware(h.HandleListRealtimeSignals))
+	mux.HandleFunc("/api/realtime-signals/start", serverhandler.Middleware(h.HandleStartRealtimeSignal))
 	// Dynamic routes
-	mux.HandleFunc("/api/realtime-signals/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/realtime-signals/", serverhandler.Middleware(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if r.Method == http.MethodDelete {
-			srv.HandleDeleteRealtimeSignal(w, r)
+			h.HandleDeleteRealtimeSignal(w, r)
 			return
 		}
 
 		if strings.HasSuffix(path, "/stop") {
-			srv.HandleStopRealtimeSignal(w, r)
+			h.HandleStopRealtimeSignal(w, r)
 		} else if strings.HasSuffix(path, "/resume") {
-			srv.HandleResumeRealtimeSignal(w, r)
+			h.HandleResumeRealtimeSignal(w, r)
 		} else if strings.HasSuffix(path, "/chart") {
-			srv.HandleSessionChart(w, r)
+			h.HandleSessionChart(w, r)
 		} else {
-			srv.HandleGetRealtimeSignal(w, r)
+			h.HandleGetRealtimeSignal(w, r)
 		}
-	})
+	}))
 
-	mux.HandleFunc("/ws/market", srv.HandleMarketWebsocket)
+	mux.HandleFunc("/ws/market", serverhandler.Middleware(h.HandleMarketWebsocket))
 
 	// Serve React App and static assets
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Try to serve API routes first (handled above), then static files
 		path := r.URL.Path
 		if strings.HasPrefix(path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=86400")

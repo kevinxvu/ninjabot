@@ -5,7 +5,7 @@ import { Activity, Clock, DollarSign, Calendar, PlaySquare, Square } from 'lucid
 import ReactPlotly from 'react-plotly.js';
 import { PriceChart, type RealtimeCandle } from '../components/PriceChart';
 import api from '../api/client';
-import { formatClientDateTime, formatClientTime, formatPlotlyLocalDate } from '../utils/time';
+import { formatClientDateTime, formatPlotlyLocalDate } from '../utils/time';
 
 const Plot = (ReactPlotly as any).default || ReactPlotly;
 
@@ -70,9 +70,10 @@ export function SignalDashboard() {
     fetchSession();
   }, [id]);
 
-  // Setup Websocket connection when session is loaded
+  // Setup Websocket connection only for running sessions.
+  // Stopped/error sessions don't need realtime price updates.
   useEffect(() => {
-    if (!session || !session.pair) return;
+    if (!session || !session.pair || session.status !== 'running') return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/market`;
@@ -114,7 +115,7 @@ export function SignalDashboard() {
         ws.close();
       }
     };
-  }, [session?.pair, session?.timeframe, id]);
+  }, [session?.pair, session?.timeframe, session?.status, id]);
 
   const stopSession = async () => {
     try {
@@ -180,8 +181,6 @@ export function SignalDashboard() {
         mode: 'lines',
         name: 'Strategy Equity',
         line: { color: '#8b5cf6', width: 2 },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(139, 92, 246, 0.1)',
       }
     ];
 
@@ -199,7 +198,7 @@ export function SignalDashboard() {
             xaxis: {
               type: 'date',
               gridcolor: 'var(--border-color)',
-              tickformat: "%H:%M\\n%Y-%m-%d",
+              tickformat: "%H:%M<br>%Y-%m-%d",
               hoverformat: "%Y-%m-%d %H:%M:%S"
             },
             yaxis: { gridcolor: 'var(--border-color)' },
@@ -284,8 +283,8 @@ export function SignalDashboard() {
         <div className="lg:col-span-3 min-h-[500px] flex flex-col">
           <PriceChart
             data={priceChartData}
-            currentPrice={currentPrice}
-            realtimeCandle={realtimeCandle}
+            currentPrice={session.status === 'running' ? currentPrice : 0}
+            realtimeCandle={session.status === 'running' ? realtimeCandle : null}
             timeframe={session.timeframe}
           />
 
@@ -311,7 +310,7 @@ export function SignalDashboard() {
                       </div>
                       <div className="flex justify-between text-xs text-gray-600">
                         <span>{isStop ? 'Paused realtime tracking' : event.type === 'RESUME' ? 'Resumed realtime tracking' : 'Started realtime tracking'}</span>
-                        <span>{formatClientTime(event.created_at)}</span>
+                        <span>{formatClientDateTime(event.created_at)}</span>
                       </div>
                     </div>
                   );
@@ -326,7 +325,7 @@ export function SignalDashboard() {
                     </div>
                     <div className="flex justify-between text-xs text-gray-600">
                       <span>Qty: {o.quantity}</span>
-                      <span>{formatClientTime(o.created_at || o.Time)}</span>
+                      <span>{formatClientDateTime(o.created_at || o.Time)}</span>
                     </div>
                   </div>
                 );

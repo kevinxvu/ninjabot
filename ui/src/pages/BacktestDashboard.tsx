@@ -302,7 +302,7 @@ export function BacktestDashboard() {
         gridcolor: 'var(--border-color)',
         showline: true,
         linecolor: "var(--border-color)",
-        tickformat: "%H:%M\\n%Y-%m-%d",
+        tickformat: "%H:%M<br>%Y-%m-%d",
         hoverformat: "%Y-%m-%d %H:%M:%S"
       },
       yaxis: {
@@ -400,7 +400,7 @@ export function BacktestDashboard() {
         gridcolor: 'var(--border-color)',
         showline: true,
         linecolor: "var(--border-color)",
-        tickformat: "%H:%M\\n%Y-%m-%d",
+        tickformat: "%H:%M<br>%Y-%m-%d",
         hoverformat: "%Y-%m-%d %H:%M:%S"
       },
       yaxis: {

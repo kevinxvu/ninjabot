@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import ReactPlotly from 'react-plotly.js';
 import { formatClientDateTime, formatPlotlyLocalDate } from '../utils/time';
 
@@ -194,6 +194,73 @@ function buildDisplayCandles(candles: Candle[], currentPrice: number, timeframe?
 }
 
 export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, timeframe }: PriceChartProps) {
+  // Preserve user's zoom/pan/dragmode state across realtime re-renders.
+  // A ref (not state) is intentional: updating it must NOT trigger a re-render.
+  const userViewRef = useRef<{
+    xRange: [string, string] | null;
+    dragmode: string;
+  }>({ xRange: null, dragmode: 'pan' });
+
+  // Bumping this forces a re-render so the computed y range updates after zoom/pan.
+  const [viewVersion, setViewVersion] = useState(0);
+  const relayoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track which trace names the user has hidden via legend clicks.
+  // Must survive re-renders so hidden state is preserved across zoom/pan.
+  const hiddenTracesRef = useRef<Set<string>>(new Set());
+  // Mirrors the most-recently-rendered traces array so onRestyle can resolve
+  // a trace index back to its name.
+  const latestTracesRef = useRef<Record<string, unknown>[]>([]);
+
+  // Cleanup debounce timer on unmount.
+  useEffect(() => () => { if (relayoutTimerRef.current) clearTimeout(relayoutTimerRef.current); }, []);
+
+  const handleRelayout = (eventData: Record<string, unknown>) => {
+    // Dragmode changed via the modebar (Zoom / Pan buttons).
+    if (typeof eventData['dragmode'] === 'string') {
+      userViewRef.current = { ...userViewRef.current, dragmode: String(eventData['dragmode']) };
+    }
+    // User double-clicked to reset zoom.
+    if (eventData['xaxis.autorange'] === true) {
+      userViewRef.current = { ...userViewRef.current, xRange: null };
+    } else if (eventData['xaxis.range[0]'] !== undefined && eventData['xaxis.range[1]'] !== undefined) {
+      // User zoomed or panned — persist the chosen range.
+      userViewRef.current = {
+        ...userViewRef.current,
+        xRange: [
+          String(eventData['xaxis.range[0]']),
+          String(eventData['xaxis.range[1]']),
+        ],
+      };
+    }
+    // When x range changes, schedule a re-render so the computed y range updates.
+    // Only react to x-axis changes to avoid a feedback loop from our own y-range updates.
+    const xChanged = eventData['xaxis.range[0]'] !== undefined || eventData['xaxis.autorange'] === true;
+    if (xChanged) {
+      if (relayoutTimerRef.current) clearTimeout(relayoutTimerRef.current);
+      relayoutTimerRef.current = setTimeout(() => setViewVersion(v => v + 1), 100);
+    }
+  };
+
+  // Called when the user clicks a legend item to show/hide a trace.
+  // We persist the visibility state in hiddenTracesRef so it survives re-renders.
+  const handleRestyle = (event: [Record<string, unknown[]>, number[]]) => {
+    const [data, indices] = event;
+    const visibilityArr = data['visible'];
+    if (!visibilityArr) return;
+    indices.forEach((traceIdx, i) => {
+      const trace = latestTracesRef.current[traceIdx];
+      if (!trace) return;
+      const name = String(trace['name'] ?? '');
+      if (!name) return;
+      if (visibilityArr[i] === 'legendonly') {
+        hiddenTracesRef.current.add(name);
+      } else {
+        hiddenTracesRef.current.delete(name);
+      }
+    });
+  };
+
   // View controls
   const [showIndicators, setShowIndicators] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
@@ -251,6 +318,38 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
 
   const renderMainChart = () => {
     if (!data?.candles?.length) return null;
+
+    // Compute the y range from only the candles visible in the current x range.
+    // This prevents Plotly from auto-ranging y over ALL data when x is zoomed in.
+    const getVisibleYRange = (): [number, number] | null => {
+      if (!displayCandles.length) return null;
+
+      let visible = displayCandles;
+      const xRange = userViewRef.current.xRange;
+      if (xRange) {
+        const xStart = new Date(xRange[0]).getTime();
+        const xEnd = new Date(xRange[1]).getTime();
+        // Include a small buffer so candles at the edge aren't clipped.
+        const filtered = displayCandles.filter((c: Candle) => {
+          const t = getCandleTimeMs(c);
+          return t >= xStart - 60_000 && t <= xEnd + 60_000;
+        });
+        if (filtered.length) visible = filtered;
+      }
+
+      const prices: number[] = visible.flatMap((c: Candle) => [c.high, c.low]);
+      if (currentPrice > 0) prices.push(currentPrice);
+
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const priceRange = maxPrice - minPrice || maxPrice * 0.01;
+      const padding = priceRange * 0.1;
+
+      return [minPrice - padding, maxPrice + padding];
+    };
+
+    const visibleYRange = getVisibleYRange();
+    void viewVersion; // ensure re-render updates visibleYRange when viewVersion changes
 
     const times = displayCandles.map((c: Candle) => formatPlotlyLocalDate(c.time));
     
@@ -402,29 +501,6 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
     const sessionEvents = [...(data.events || [])].sort((a: SessionEvent, b: SessionEvent) => (
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     ));
-    const lastEventRangeTime = displayCandles[displayCandles.length - 1]?.time;
-
-    sessionEvents.forEach((event: SessionEvent, index: number) => {
-      const isRunningRange = event.type === "START" || event.type === "RESUME";
-      if (!isRunningRange) return;
-
-      const nextEvent = sessionEvents[index + 1];
-      const rangeEnd = nextEvent?.created_at || lastEventRangeTime;
-      if (!rangeEnd) return;
-
-      shapes.push({
-        type: "rect",
-        xref: "x",
-        yref: "paper",
-        x0: formatPlotlyLocalDate(event.created_at),
-        x1: formatPlotlyLocalDate(rangeEnd),
-        y0: 0,
-        y1: 1,
-        line: { width: 0 },
-        fillcolor: "rgba(16, 185, 129, 0.07)",
-        layer: "below",
-      });
-    });
 
     sessionEvents.forEach((event: SessionEvent) => {
       const eventTime = formatPlotlyLocalDate(event.created_at);
@@ -578,15 +654,17 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
       paper_bgcolor: 'transparent',
       plot_bgcolor: 'transparent',
       font: { family: "Inter, sans-serif", color: 'var(--text-primary)' },
-      dragmode: "pan" as const,
+      dragmode: userViewRef.current.dragmode as 'zoom' | 'pan' | 'select' | 'lasso' | 'orbit' | 'turntable',
       xaxis: {
         type: 'date' as const,
         gridcolor: 'var(--border-color)',
         rangeslider: { visible: false },
         showline: true,
         linecolor: "var(--border-color)",
-        tickformat: "%H:%M\\n%Y-%m-%d",
-        hoverformat: "%Y-%m-%d %H:%M:%S"
+        tickformat: "%H:%M<br>%Y-%m-%d",
+        hoverformat: "%Y-%m-%d %H:%M:%S",
+        // Restore user zoom range so realtime price ticks don't reset the view.
+        ...(userViewRef.current.xRange ? { range: userViewRef.current.xRange, autorange: false } : {}),
       },
       yaxis: {
         domain: yaxisDomain,
@@ -595,7 +673,9 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
         side: "left" as const,
         tickformat: ",.8~f",
         showline: true,
-        linecolor: "var(--border-color)"
+        linecolor: "var(--border-color)",
+        // Lock y range to visible candles so zooming x doesn't show the full dataset range.
+        ...(visibleYRange ? { range: visibleYRange, autorange: false } : {}),
       },
       yaxis2: {
         domain: yaxis2Domain,
@@ -628,8 +708,22 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
 
     return (
       <Plot
-        data={traces}
+        data={(() => {
+          // Apply legend-hidden state before passing traces to Plotly, then
+          // snapshot the result so handleRestyle can resolve indices to names.
+          const withVisibility = traces.map(t => {
+            const name = String(t['name'] ?? '');
+            if (name && hiddenTracesRef.current.has(name)) {
+              return { ...t, visible: 'legendonly' };
+            }
+            return t;
+          });
+          latestTracesRef.current = withVisibility;
+          return withVisibility;
+        })()}
         layout={layout}
+        onRelayout={handleRelayout as (event: Record<string, unknown>) => void}
+        onRestyle={handleRestyle as unknown as (data: Record<string, unknown>, indices: number[]) => void}
         useResizeHandler
         className="w-full"
         style={{ height: chartHeight }}

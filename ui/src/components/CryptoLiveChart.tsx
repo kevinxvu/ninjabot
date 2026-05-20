@@ -191,7 +191,7 @@ export function CryptoLiveChart({
                 spikecolor: '#64748b',
                 spikethickness: 1,
                 spikedash: 'dot',
-                tickformat: '%H:%M %Y-%m-%d',
+                tickformat: '%H:%M<br>%Y-%m-%d',
                 hoverformat: '%Y-%m-%d %H:%M:%S'
               },
               yaxis: {

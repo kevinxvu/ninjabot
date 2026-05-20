@@ -1,18 +1,223 @@
-package server
+package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
+	"os"
 	"sort"
 	"strings"
+	"time"
 
 	ninjabot "github.com/rodrigo-brito/ninjabot"
+	"github.com/rodrigo-brito/ninjabot/download"
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
+	exfeed "github.com/rodrigo-brito/ninjabot/exchange/feed"
 	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
+	"github.com/rodrigo-brito/ninjabot/strategy"
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 	"github.com/rodrigo-brito/ninjabot/tools/metrics"
 )
+
+// HandleBacktest receives POST /api/backtest, downloads historical data,
+// runs the simulation, and returns the list of pairs to redirect to.
+func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req backtestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "invalid request body"})
+		return
+	}
+
+	// Validate and normalise input.
+	pairs := parsePairs(req.Pairs)
+	if len(pairs) == 0 {
+		writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "at least one pair is required"})
+		return
+	}
+
+	if req.Strategy == "" {
+		req.Strategy = "emacross"
+	}
+
+	// Force timeframe based on strategy
+	switch req.Strategy {
+	case "ocosell", "dca":
+		req.Timeframe = "1d"
+	case "trailingstop", "turtle":
+		req.Timeframe = "4h"
+	default: // emacross
+		if req.Timeframe == "" {
+			req.Timeframe = "1h"
+		}
+	}
+
+	if req.Days <= 0 {
+		req.Days = 30
+	}
+	if req.InitialCapital <= 0 {
+		req.InitialCapital = 10_000
+	}
+
+	// Validate EMA parameters if strategy is emacross
+	if req.Strategy == "emacross" {
+		if req.FastPeriod <= 0 {
+			req.FastPeriod = 8
+		}
+		if req.SlowPeriod <= 0 {
+			req.SlowPeriod = 21
+		}
+		if req.FastPeriod >= req.SlowPeriod {
+			writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "fast_period must be less than slow_period"})
+			return
+		}
+	}
+
+	// Validate DCA parameters if strategy is dca
+	if req.Strategy == "dca" {
+		if req.DCAInterval <= 0 {
+			req.DCAInterval = 7
+		}
+		if req.DCABuyAmount <= 0 {
+			req.DCABuyAmount = 100
+		}
+	}
+
+	// Serialize: only one backtest at a time.
+	h.mu.Lock()
+	if h.running {
+		h.mu.Unlock()
+		writeJSON(w, http.StatusConflict, backtestResponse{Error: "a backtest is already running, please wait"})
+		return
+	}
+	h.running = true
+	h.mu.Unlock()
+
+	defer func() {
+		h.mu.Lock()
+		h.running = false
+		h.mu.Unlock()
+	}()
+
+	req.Pairs = strings.Join(pairs, ",") // store normalised pairs
+	if err := h.runBacktest(r.Context(), req, pairs); err != nil {
+		writeJSON(w, http.StatusInternalServerError, backtestResponse{Error: err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, backtestResponse{Pairs: pairs})
+}
+
+func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []string) error {
+	// Create a temp directory to hold downloaded CSV files.
+	tmpDir, err := os.MkdirTemp("", "ninjabot-backtest-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Use Binance public API (no credentials needed for historical klines).
+	exc, err := exbinance.NewBinance(ctx)
+	if err != nil {
+		return fmt.Errorf("init exchange: %w", err)
+	}
+	downloader := download.NewDownloader(exc)
+
+	start := time.Now().AddDate(0, 0, -req.Days)
+	end := time.Now()
+
+	pairFeeds := make([]exfeed.PairFeed, 0, len(pairs))
+	for _, pair := range pairs {
+		csvFile := fmt.Sprintf("%s/%s.csv", tmpDir, pair)
+		if err := downloader.Download(ctx, pair, req.Timeframe, csvFile,
+			download.WithInterval(start, end),
+		); err != nil {
+			return fmt.Errorf("download %s: %w", pair, err)
+		}
+		pairFeeds = append(pairFeeds, exfeed.PairFeed{
+			Pair:      pair,
+			File:      csvFile,
+			Timeframe: req.Timeframe,
+		})
+	}
+
+	var strat strategy.Strategy
+	switch req.Strategy {
+	case "ocosell":
+		strat = new(strategies.OCOSell)
+	case "trailingstop":
+		strat = strategies.NewTrailing(pairs)
+	case "turtle":
+		strat = new(strategies.Turtle)
+	case "dca":
+		strat = strategies.NewDCA(req.Timeframe, req.DCAInterval, req.DCABuyAmount)
+	default:
+		strat = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
+	}
+
+	csvFeed, err := exfeed.NewCSVFeed(strat.Timeframe(), pairFeeds...)
+	if err != nil {
+		return fmt.Errorf("create csv feed: %w", err)
+	}
+
+	store, err := storagebuntdb.FromMemory()
+	if err != nil {
+		return fmt.Errorf("create storage: %w", err)
+	}
+
+	wallet := expaperwallet.NewPaperWallet(
+		ctx,
+		"USDT",
+		expaperwallet.WithPaperAsset("USDT", req.InitialCapital),
+		expaperwallet.WithDataFeed(csvFeed),
+	)
+
+	// Reset chart and attach the new strategy / wallet before bot.Run() so
+	// that OnCandle and OnOrder callbacks populate the correct data.
+	h.chart.Reset()
+	h.chart.SetStrategy(strat)
+	h.chart.SetPaperWallet(wallet)
+
+	settings := ninjabot.Settings{Pairs: pairs}
+
+	bot, err := ninjabot.NewBot(
+		ctx,
+		settings,
+		wallet,
+		strat,
+		ninjabot.WithBacktest(wallet),
+		ninjabot.WithStorage(store),
+		ninjabot.WithCandleSubscription(h.chart),
+		ninjabot.WithOrderSubscription(h.chart),
+		ninjabot.WithLogLevel(log.WarnLevel),
+	)
+	if err != nil {
+		return fmt.Errorf("create bot: %w", err)
+	}
+
+	if err := bot.Run(ctx); err != nil {
+		return fmt.Errorf("run backtest: %w", err)
+	}
+
+	bot.Summary()
+
+	// Compute and store structured summary for /api/summary.
+	summary := computeSummary(bot, wallet, req, pairs)
+	h.mu.Lock()
+	h.summaryJSON = summary
+	h.mu.Unlock()
+
+	return nil
+}
 
 // computeHistogram divides returns (as fractions, e.g. 0.032 = 3.2%) into
 // numBuckets equal-width bins and returns each bin's %count and display label.
@@ -148,16 +353,19 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, r
 
 	sort.Slice(pairStats, func(i, j int) bool { return pairStats[i].Pair < pairStats[j].Pair })
 
-	winRate, avgPayoff, avgPF, avgSQN := 0.0, 0.0, 0.0, 0.0
+	winRate := 0.0
 	if totalTrades > 0 {
 		winRate = float64(totalWins) / float64(totalTrades) * 100
 	}
+	avgPayoff := 0.0
+	avgPF := 0.0
 	if totalWeightedCount > 0 {
 		avgPayoff = totalPayoffWeighted / float64(totalWeightedCount)
 		avgPF = totalPFWeighted / float64(totalWeightedCount)
 	}
-	if n := len(ctrl.Results); n > 0 {
-		avgSQN = totalSQN / float64(n)
+	avgSQN := 0.0
+	if len(ctrl.Results) > 0 {
+		avgSQN = totalSQN / float64(len(ctrl.Results))
 	}
 
 	// Final asset balances: last value from AssetValues (value in USDT)
@@ -175,6 +383,7 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, r
 	}
 	baseBalance := finalPortfolio - totalAssetValue
 
+	// Build strategy info string
 	strategyTitle := "EMA Crossover"
 	if req.Strategy == "ocosell" {
 		strategyTitle = "OCO Sell (Stochastic)"
@@ -193,10 +402,15 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, r
 		strategyInfo = fmt.Sprintf("%s (Interval=%d days, Buy=%.2f USDT) │ Timeframe: %s │ History: %d days", strategyTitle, req.DCAInterval, req.DCABuyAmount, req.Timeframe, req.Days)
 	}
 
+	baseCoin := "USDT"
+	if len(pairs) > 0 {
+		_, baseCoin = exchange.SplitAssetQuote(pairs[0])
+	}
+
 	data := summaryStat{
 		StrategyInfo:    strategyInfo,
-		BaseCoin:        strings.Split(pairs[0], "USDT")[0], // Fallback if needed, we'll display USDT anyway below
-		InitialCapital:  initialCapital,
+		BaseCoin:        baseCoin,
+		InitialCapital:  math.Round(initialCapital*100) / 100,
 		FinalPortfolio:  math.Round(finalPortfolio*100) / 100,
 		GrossProfit:     math.Round(grossProfit*100) / 100,
 		GrossProfitPct:  math.Round(grossProfitPct*100) / 100,

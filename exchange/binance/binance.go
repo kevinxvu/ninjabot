@@ -592,6 +592,7 @@ func (b *Binance) CandlesByPeriod(ctx context.Context, pair, period string,
 		Interval(period).
 		StartTime(start.UnixNano() / int64(time.Millisecond)).
 		EndTime(end.UnixNano() / int64(time.Millisecond)).
+		Limit(1000).
 		Do(ctx)
 
 	if err != nil {

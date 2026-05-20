@@ -8,11 +8,14 @@ import (
 	"strconv"
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	exfeed "github.com/rodrigo-brito/ninjabot/exchange/feed"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/notification"
 	"github.com/rodrigo-brito/ninjabot/order"
 	"github.com/rodrigo-brito/ninjabot/service"
 	"github.com/rodrigo-brito/ninjabot/storage"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
 	"github.com/rodrigo-brito/ninjabot/strategy"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 	"github.com/rodrigo-brito/ninjabot/tools/metrics"
@@ -51,8 +54,8 @@ type NinjaBot struct {
 	priorityQueueCandle   *model.PriorityQueue
 	strategiesControllers map[string]*strategy.Controller
 	orderFeed             *order.Feed
-	dataFeed              *exchange.DataFeedSubscription
-	paperWallet           *exchange.PaperWallet
+	dataFeed              *exfeed.DataFeedSubscription
+	paperWallet           *expaperwallet.PaperWallet
 
 	backtest bool
 }
@@ -67,7 +70,7 @@ func NewBot(ctx context.Context, settings model.Settings, exch service.Exchange,
 		exchange:              exch,
 		strategy:              str,
 		orderFeed:             order.NewOrderFeed(),
-		dataFeed:              exchange.NewDataFeed(exch),
+		dataFeed:              exfeed.NewDataFeed(exch),
 		strategiesControllers: make(map[string]*strategy.Controller),
 		priorityQueueCandle:   model.NewPriorityQueue(nil),
 	}
@@ -85,7 +88,7 @@ func NewBot(ctx context.Context, settings model.Settings, exch service.Exchange,
 
 	var err error
 	if bot.storage == nil {
-		bot.storage, err = storage.FromFile(defaultDatabase)
+		bot.storage, err = storagebuntdb.FromFile(defaultDatabase)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +110,7 @@ func NewBot(ctx context.Context, settings model.Settings, exch service.Exchange,
 
 // WithBacktest sets the bot to run in backtest mode, it is required for backtesting environments
 // Backtest mode optimize the input read for CSV and deal with race conditions
-func WithBacktest(wallet *exchange.PaperWallet) Option {
+func WithBacktest(wallet *expaperwallet.PaperWallet) Option {
 	return func(bot *NinjaBot) {
 		bot.backtest = true
 		opt := WithPaperWallet(wallet)
@@ -146,7 +149,7 @@ func WithCandleSubscription(subscriber CandleSubscriber) Option {
 }
 
 // WithPaperWallet sets the paper wallet for the bot (used for backtesting and live simulation)
-func WithPaperWallet(wallet *exchange.PaperWallet) Option {
+func WithPaperWallet(wallet *expaperwallet.PaperWallet) Option {
 	return func(bot *NinjaBot) {
 		bot.paperWallet = wallet
 	}

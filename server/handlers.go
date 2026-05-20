@@ -15,8 +15,11 @@ import (
 	ninjabot "github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/download"
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
+	exfeed "github.com/rodrigo-brito/ninjabot/exchange/feed"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/model"
-	"github.com/rodrigo-brito/ninjabot/storage"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
 	"github.com/rodrigo-brito/ninjabot/strategy"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
@@ -275,7 +278,7 @@ func (s *Server) runBacktest(ctx context.Context, req backtestRequest, pairs []s
 	defer os.RemoveAll(tmpDir)
 
 	// Use Binance public API (no credentials needed for historical klines).
-	exc, err := exchange.NewBinance(ctx)
+	exc, err := exbinance.NewBinance(ctx)
 	if err != nil {
 		return fmt.Errorf("init exchange: %w", err)
 	}
@@ -284,7 +287,7 @@ func (s *Server) runBacktest(ctx context.Context, req backtestRequest, pairs []s
 	start := time.Now().AddDate(0, 0, -req.Days)
 	end := time.Now()
 
-	pairFeeds := make([]exchange.PairFeed, 0, len(pairs))
+	pairFeeds := make([]exfeed.PairFeed, 0, len(pairs))
 	for _, pair := range pairs {
 		csvFile := fmt.Sprintf("%s/%s.csv", tmpDir, pair)
 		if err := downloader.Download(ctx, pair, req.Timeframe, csvFile,
@@ -292,7 +295,7 @@ func (s *Server) runBacktest(ctx context.Context, req backtestRequest, pairs []s
 		); err != nil {
 			return fmt.Errorf("download %s: %w", pair, err)
 		}
-		pairFeeds = append(pairFeeds, exchange.PairFeed{
+		pairFeeds = append(pairFeeds, exfeed.PairFeed{
 			Pair:      pair,
 			File:      csvFile,
 			Timeframe: req.Timeframe,
@@ -313,21 +316,21 @@ func (s *Server) runBacktest(ctx context.Context, req backtestRequest, pairs []s
 		strat = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
 	}
 
-	csvFeed, err := exchange.NewCSVFeed(strat.Timeframe(), pairFeeds...)
+	csvFeed, err := exfeed.NewCSVFeed(strat.Timeframe(), pairFeeds...)
 	if err != nil {
 		return fmt.Errorf("create csv feed: %w", err)
 	}
 
-	store, err := storage.FromMemory()
+	store, err := storagebuntdb.FromMemory()
 	if err != nil {
 		return fmt.Errorf("create storage: %w", err)
 	}
 
-	wallet := exchange.NewPaperWallet(
+	wallet := expaperwallet.NewPaperWallet(
 		ctx,
 		"USDT",
-		exchange.WithPaperAsset("USDT", req.InitialCapital),
-		exchange.WithDataFeed(csvFeed),
+		expaperwallet.WithPaperAsset("USDT", req.InitialCapital),
+		expaperwallet.WithDataFeed(csvFeed),
 	)
 
 	// Reset chart and attach the new strategy / wallet before bot.Run() so

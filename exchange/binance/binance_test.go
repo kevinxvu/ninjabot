@@ -1,4 +1,4 @@
-package exchange
+package binance
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 )
 
 func TestFormatQuantity(t *testing.T) {
-	binance := Binance{assetsInfo: map[string]model.AssetInfo{
+	b := Binance{assetsInfo: map[string]model.AssetInfo{
 		"BTCUSDT": {
 			StepSize:           0.00001000,
 			TickSize:           0.00001000,
@@ -46,8 +46,8 @@ func TestFormatQuantity(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(fmt.Sprintf("given %f %s", tc.quantity, tc.pair), func(t *testing.T) {
-			assert.Equal(t, tc.expected, binance.formatQuantity(tc.pair, tc.quantity))
-			assert.Equal(t, tc.expected, binance.formatPrice(tc.pair, tc.quantity))
+			assert.Equal(t, tc.expected, b.formatQuantity(tc.pair, tc.quantity))
+			assert.Equal(t, tc.expected, b.formatPrice(tc.pair, tc.quantity))
 		})
 	}
 }

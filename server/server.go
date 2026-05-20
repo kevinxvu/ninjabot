@@ -9,10 +9,13 @@ import (
 	"sync"
 
 	"github.com/glebarez/sqlite"
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/storage"
+	storagesqlite "github.com/rodrigo-brito/ninjabot/storage/sqlite"
 	"gorm.io/gorm"
+
+	serverws "github.com/rodrigo-brito/ninjabot/server/ws"
 )
 
 type Server struct {
@@ -20,16 +23,16 @@ type Server struct {
 	running     bool
 	chart       *plot.Chart
 	summaryJSON json.RawMessage
-	exc         *exchange.Binance
-	wsManager   *MarketWebsocketManager
+	exc         *exbinance.Binance
+	wsManager   *serverws.MarketWebsocketManager
 	pairsData   map[string]interface{}
 	db          storage.Storage
 	signalMgr   *SignalManager
 }
 
 func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
-	exc, _ := exchange.NewBinance(context.Background(), exchange.WithBinanceCredentials(cfg.APIKey, cfg.APISecret))
-	wsManager := NewMarketWebsocketManager()
+	exc, _ := exbinance.NewBinance(context.Background(), exbinance.WithBinanceCredentials(cfg.APIKey, cfg.APISecret))
+	wsManager := serverws.NewMarketWebsocketManager()
 
 	// Khởi chạy theo dõi Ticker mặc định
 	defaultPairs := []string{"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"}
@@ -45,7 +48,7 @@ func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
 	}
 
 	// Initialize SQLite Database
-	dbStorage, err := storage.FromSQL(sqlite.Open("ninjabot.db"), &gorm.Config{})
+	dbStorage, err := storagesqlite.FromSQL(sqlite.Open("ninjabot.db"), &gorm.Config{})
 	if err != nil {
 		fmt.Printf("Warning: Could not initialize SQLite database: %v\n", err)
 	}

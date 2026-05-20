@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
 	"github.com/rodrigo-brito/ninjabot/server"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
@@ -30,10 +30,10 @@ func main() {
 	}
 
 	// Initialize your exchange with futures
-	binance, err := exchange.NewBinanceFuture(ctx,
-		exchange.WithBinanceFutureCredentials(cfg.APIKey, cfg.APISecret),
-		exchange.WithBinanceFutureLeverage("BTCUSDT", 1, exchange.MarginTypeIsolated),
-		exchange.WithBinanceFutureLeverage("ETHUSDT", 1, exchange.MarginTypeIsolated),
+	binance, err := exbinance.NewBinanceFuture(ctx,
+			exbinance.WithBinanceFutureCredentials(cfg.APIKey, cfg.APISecret),
+			exbinance.WithBinanceFutureLeverage("BTCUSDT", 1, exbinance.MarginTypeIsolated),
+			exbinance.WithBinanceFutureLeverage("ETHUSDT", 1, exbinance.MarginTypeIsolated),
 	)
 	if err != nil {
 		log.Fatal(err)

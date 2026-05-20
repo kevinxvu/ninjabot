@@ -1,4 +1,4 @@
-package exchange
+package feed
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/xhit/go-str2duration/v2"
 
+	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
 )
 
@@ -31,7 +32,7 @@ type CSVFeed struct {
 }
 
 func (c CSVFeed) AssetsInfo(pair string) model.AssetInfo {
-	asset, quote := SplitAssetQuote(pair)
+	asset, quote := exchange.SplitAssetQuote(pair)
 	return model.AssetInfo{
 		BaseAsset:          asset,
 		QuoteAsset:         quote,
@@ -177,7 +178,7 @@ func (c *CSVFeed) Limit(duration time.Duration) *CSVFeed {
 	return c
 }
 
-func isFistCandlePeriod(t time.Time, fromTimeframe, targetTimeframe string) (bool, error) {
+func isFirstCandlePeriod(t time.Time, fromTimeframe, targetTimeframe string) (bool, error) {
 	fromDuration, err := str2duration.ParseDuration(fromTimeframe)
 	if err != nil {
 		return false, err
@@ -234,7 +235,7 @@ func (c *CSVFeed) resample(pair, sourceTimeframe, targetTimeframe string) error 
 
 	var i int
 	for ; i < len(c.CandlePairTimeFrame[sourceKey]); i++ {
-		if ok, err := isFistCandlePeriod(c.CandlePairTimeFrame[sourceKey][i].Time, sourceTimeframe,
+		if ok, err := isFirstCandlePeriod(c.CandlePairTimeFrame[sourceKey][i].Time, sourceTimeframe,
 			targetTimeframe); err != nil {
 			return err
 		} else if ok {

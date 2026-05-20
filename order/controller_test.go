@@ -8,17 +8,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/model"
-	"github.com/rodrigo-brito/ninjabot/storage"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
 )
 
 func TestController_updatePosition(t *testing.T) {
 	t.Run("market orders", func(t *testing.T) {
-		storage, err := storage.FromMemory()
+		storage, err := storagebuntdb.FromMemory()
 		require.NoError(t, err)
 		ctx := context.Background()
-		wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+		wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 3000))
 		controller := NewController(ctx, wallet, storage, NewOrderFeed())
 
 		wallet.OnCandle(model.Candle{Pair: "BTCUSDT", Close: 1000})
@@ -58,10 +58,10 @@ func TestController_updatePosition(t *testing.T) {
 	})
 
 	t.Run("limit order", func(t *testing.T) {
-		storage, err := storage.FromMemory()
+		storage, err := storagebuntdb.FromMemory()
 		require.NoError(t, err)
 		ctx := context.Background()
-		wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+		wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 3000))
 		controller := NewController(ctx, wallet, storage, NewOrderFeed())
 		wallet.OnCandle(model.Candle{Time: time.Now(), Pair: "BTCUSDT", High: 1500, Close: 1500})
 
@@ -90,10 +90,10 @@ func TestController_updatePosition(t *testing.T) {
 	})
 
 	t.Run("oco order limit maker", func(t *testing.T) {
-		storage, err := storage.FromMemory()
+		storage, err := storagebuntdb.FromMemory()
 		require.NoError(t, err)
 		ctx := context.Background()
-		wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+		wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 3000))
 		controller := NewController(ctx, wallet, storage, NewOrderFeed())
 		wallet.OnCandle(model.Candle{Time: time.Now(), Pair: "BTCUSDT", High: 1500, Close: 1500})
 
@@ -119,10 +119,10 @@ func TestController_updatePosition(t *testing.T) {
 	})
 
 	t.Run("oco stop sell", func(t *testing.T) {
-		storage, err := storage.FromMemory()
+		storage, err := storagebuntdb.FromMemory()
 		require.NoError(t, err)
 		ctx := context.Background()
-		wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+		wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 3000))
 		controller := NewController(ctx, wallet, storage, NewOrderFeed())
 		wallet.OnCandle(model.Candle{Time: time.Now(), Pair: "BTCUSDT", Close: 1500, Low: 1500})
 
@@ -162,12 +162,12 @@ func TestController_updatePosition(t *testing.T) {
 	})
 
 	t.Run("short market", func(t *testing.T) {
-		storage, err := storage.FromMemory()
+		storage, err := storagebuntdb.FromMemory()
 		require.NoError(t, err)
 		ctx := context.Background()
 
-		wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 0),
-			exchange.WithPaperAsset("BTC", 2))
+		wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 0),
+			expaperwallet.WithPaperAsset("BTC", 2))
 		controller := NewController(ctx, wallet, storage, NewOrderFeed())
 		wallet.OnCandle(model.Candle{Time: time.Now(), Pair: "BTCUSDT", Close: 1500, Low: 1500})
 
@@ -181,10 +181,10 @@ func TestController_updatePosition(t *testing.T) {
 }
 
 func TestController_PositionValue(t *testing.T) {
-	storage, err := storage.FromMemory()
+	storage, err := storagebuntdb.FromMemory()
 	require.NoError(t, err)
 	ctx := context.Background()
-	wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+	wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 3000))
 	controller := NewController(ctx, wallet, storage, NewOrderFeed())
 
 	lastCandle := model.Candle{Time: time.Now(), Pair: "BTCUSDT", Close: 1500, Low: 1500}
@@ -202,10 +202,10 @@ func TestController_PositionValue(t *testing.T) {
 }
 
 func TestController_Position(t *testing.T) {
-	storage, err := storage.FromMemory()
+	storage, err := storagebuntdb.FromMemory()
 	require.NoError(t, err)
 	ctx := context.Background()
-	wallet := exchange.NewPaperWallet(ctx, "USDT", exchange.WithPaperAsset("USDT", 3000))
+	wallet := expaperwallet.NewPaperWallet(ctx, "USDT", expaperwallet.WithPaperAsset("USDT", 3000))
 	controller := NewController(ctx, wallet, storage, NewOrderFeed())
 
 	lastCandle := model.Candle{Time: time.Now(), Pair: "BTCUSDT", Close: 1500, Low: 1500}

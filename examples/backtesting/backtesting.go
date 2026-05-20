@@ -4,11 +4,12 @@ import (
 	"context"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	exfeed "github.com/rodrigo-brito/ninjabot/exchange/feed"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/plot/indicator"
 	"github.com/rodrigo-brito/ninjabot/server"
-	"github.com/rodrigo-brito/ninjabot/storage"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
@@ -31,14 +32,14 @@ func main() {
 	strategy := new(strategies.CrossEMA)
 
 	// load historical data from CSV files
-	csvFeed, err := exchange.NewCSVFeed(
+	csvFeed, err := exfeed.NewCSVFeed(
 		strategy.Timeframe(),
-		exchange.PairFeed{
+		exfeed.PairFeed{
 			Pair:      "BTCUSDT",
 			File:      "testdata/btc-1h.csv",
 			Timeframe: "1h",
 		},
-		exchange.PairFeed{
+		exfeed.PairFeed{
 			Pair:      "ETHUSDT",
 			File:      "testdata/eth-1h.csv",
 			Timeframe: "1h",
@@ -49,17 +50,17 @@ func main() {
 	}
 
 	// initialize a database in memory
-	storage, err := storage.FromMemory()
+	storage, err := storagebuntdb.FromMemory()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// create a paper wallet for simulation, initializing with 10.000 USDT
-	wallet := exchange.NewPaperWallet(
+	wallet := expaperwallet.NewPaperWallet(
 		ctx,
 		"USDT",
-		exchange.WithPaperAsset("USDT", 10000),
-		exchange.WithDataFeed(csvFeed),
+		expaperwallet.WithPaperAsset("USDT", 10000),
+		expaperwallet.WithDataFeed(csvFeed),
 	)
 
 	// create a chart  with indicators from the strategy and a custom additional RSI indicator

@@ -1,4 +1,4 @@
-package exchange
+package binance
 
 import (
 	"context"
@@ -6,10 +6,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/adshao/go-binance/v2"
+	gobinance "github.com/adshao/go-binance/v2"
 	"github.com/adshao/go-binance/v2/common"
 	"github.com/jpillora/backoff"
 
+	xch "github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
@@ -18,7 +19,7 @@ type MetadataFetchers func(pair string, t time.Time) (string, float64)
 
 type Binance struct {
 	ctx        context.Context
-	client     *binance.Client
+	client     *gobinance.Client
 	assetsInfo map[string]model.AssetInfo
 	HeikinAshi bool
 	Testnet    bool
@@ -54,10 +55,10 @@ func WithMetadataFetcher(fetcher MetadataFetchers) BinanceOption {
 	}
 }
 
-// WithTestNet activate Bianance testnet
+// WithTestNet activate Binance testnet
 func WithTestNet() BinanceOption {
 	return func(_ *Binance) {
-		binance.UseTestnet = true
+		gobinance.UseTestnet = true
 	}
 }
 
@@ -68,9 +69,9 @@ func WithCustomMainAPIEndpoint(apiURL, wsURL, combinedURL string) BinanceOption 
 	}
 
 	return func(_ *Binance) {
-		binance.BaseAPIMainURL = apiURL
-		binance.BaseWsMainURL = wsURL
-		binance.BaseCombinedMainURL = combinedURL
+		gobinance.BaseAPIMainURL = apiURL
+		gobinance.BaseWsMainURL = wsURL
+		gobinance.BaseCombinedMainURL = combinedURL
 	}
 }
 
@@ -81,33 +82,33 @@ func WithCustomTestnetAPIEndpoint(apiURL, wsURL, combinedURL string) BinanceOpti
 	}
 
 	return func(_ *Binance) {
-		binance.BaseAPITestnetURL = apiURL
-		binance.BaseWsTestnetURL = wsURL
-		binance.BaseCombinedTestnetURL = combinedURL
+		gobinance.BaseAPITestnetURL = apiURL
+		gobinance.BaseWsTestnetURL = wsURL
+		gobinance.BaseCombinedTestnetURL = combinedURL
 	}
 }
 
 // NewBinance create a new Binance exchange instance
 func NewBinance(ctx context.Context, options ...BinanceOption) (*Binance, error) {
-	binance.WebsocketKeepalive = true
-	exchange := &Binance{ctx: ctx}
+	gobinance.WebsocketKeepalive = true
+	b := &Binance{ctx: ctx}
 	for _, option := range options {
-		option(exchange)
+		option(b)
 	}
 
-	exchange.client = binance.NewClient(exchange.APIKey, exchange.APISecret)
-	err := exchange.client.NewPingService().Do(ctx)
+	b.client = gobinance.NewClient(b.APIKey, b.APISecret)
+	err := b.client.NewPingService().Do(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("binance ping fail: %w", err)
 	}
 
-	results, err := exchange.client.NewExchangeInfoService().Do(ctx)
+	results, err := b.client.NewExchangeInfoService().Do(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Initialize with orders precision and assets limits
-	exchange.assetsInfo = make(map[string]model.AssetInfo)
+	b.assetsInfo = make(map[string]model.AssetInfo)
 	for _, info := range results.Symbols {
 		tradeLimits := model.AssetInfo{
 			BaseAsset:          info.BaseAsset,
@@ -117,25 +118,25 @@ func NewBinance(ctx context.Context, options ...BinanceOption) (*Binance, error)
 		}
 		for _, filter := range info.Filters {
 			if typ, ok := filter["filterType"]; ok {
-				if typ == string(binance.SymbolFilterTypeLotSize) {
+				if typ == string(gobinance.SymbolFilterTypeLotSize) {
 					tradeLimits.MinQuantity, _ = strconv.ParseFloat(filter["minQty"].(string), 64)
 					tradeLimits.MaxQuantity, _ = strconv.ParseFloat(filter["maxQty"].(string), 64)
 					tradeLimits.StepSize, _ = strconv.ParseFloat(filter["stepSize"].(string), 64)
 				}
 
-				if typ == string(binance.SymbolFilterTypePriceFilter) {
+				if typ == string(gobinance.SymbolFilterTypePriceFilter) {
 					tradeLimits.MinPrice, _ = strconv.ParseFloat(filter["minPrice"].(string), 64)
 					tradeLimits.MaxPrice, _ = strconv.ParseFloat(filter["maxPrice"].(string), 64)
 					tradeLimits.TickSize, _ = strconv.ParseFloat(filter["tickSize"].(string), 64)
 				}
 			}
 		}
-		exchange.assetsInfo[info.Symbol] = tradeLimits
+		b.assetsInfo[info.Symbol] = tradeLimits
 	}
 
 	log.Info("[SETUP] Using Binance exchange")
 
-	return exchange, nil
+	return b, nil
 }
 
 func (b *Binance) LastQuote(ctx context.Context, pair string) (float64, error) {
@@ -153,12 +154,12 @@ func (b *Binance) AssetsInfo(pair string) model.AssetInfo {
 func (b *Binance) validate(pair string, quantity float64) error {
 	info, ok := b.assetsInfo[pair]
 	if !ok {
-		return ErrInvalidAsset
+		return xch.ErrInvalidAsset
 	}
 
 	if quantity > info.MaxQuantity || quantity < info.MinQuantity {
-		return &OrderError{
-			Err:      fmt.Errorf("%w: min: %f max: %f", ErrInvalidQuantity, info.MinQuantity, info.MaxQuantity),
+		return &xch.OrderError{
+			Err:      fmt.Errorf("%w: min: %f max: %f", xch.ErrInvalidQuantity, info.MinQuantity, info.MaxQuantity),
 			Pair:     pair,
 			Quantity: quantity,
 		}
@@ -177,12 +178,12 @@ func (b *Binance) CreateOrderOCO(side model.SideType, pair string,
 	}
 
 	ocoOrder, err := b.client.NewCreateOCOService().
-		Side(binance.SideType(side)).
+		Side(gobinance.SideType(side)).
 		Quantity(b.formatQuantity(pair, quantity)).
 		Price(b.formatPrice(pair, price)).
 		StopPrice(b.formatPrice(pair, stop)).
 		StopLimitPrice(b.formatPrice(pair, stopLimit)).
-		StopLimitTimeInForce(binance.TimeInForceTypeGTC).
+		StopLimitTimeInForce(gobinance.TimeInForceTypeGTC).
 		Symbol(pair).
 		Do(b.ctx)
 	if err != nil {
@@ -223,9 +224,9 @@ func (b *Binance) CreateOrderStop(pair string, quantity float64, limit float64) 
 	}
 
 	order, err := b.client.NewCreateOrderService().Symbol(pair).
-		Type(binance.OrderTypeStopLoss).
-		TimeInForce(binance.TimeInForceTypeGTC).
-		Side(binance.SideTypeSell).
+		Type(gobinance.OrderTypeStopLoss).
+		TimeInForce(gobinance.TimeInForceTypeGTC).
+		Side(gobinance.SideTypeSell).
 		Quantity(b.formatQuantity(pair, quantity)).
 		Price(b.formatPrice(pair, limit)).
 		Do(b.ctx)
@@ -283,9 +284,9 @@ func (b *Binance) CreateOrderLimit(side model.SideType, pair string,
 
 	order, err := b.client.NewCreateOrderService().
 		Symbol(pair).
-		Type(binance.OrderTypeLimit).
-		TimeInForce(binance.TimeInForceTypeGTC).
-		Side(binance.SideType(side)).
+		Type(gobinance.OrderTypeLimit).
+		TimeInForce(gobinance.TimeInForceTypeGTC).
+		Side(gobinance.SideType(side)).
 		Quantity(b.formatQuantity(pair, quantity)).
 		Price(b.formatPrice(pair, limit)).
 		Do(b.ctx)
@@ -324,10 +325,10 @@ func (b *Binance) CreateOrderMarket(side model.SideType, pair string, quantity f
 
 	order, err := b.client.NewCreateOrderService().
 		Symbol(pair).
-		Type(binance.OrderTypeMarket).
-		Side(binance.SideType(side)).
+		Type(gobinance.OrderTypeMarket).
+		Side(gobinance.SideType(side)).
 		Quantity(b.formatQuantity(pair, quantity)).
-		NewOrderRespType(binance.NewOrderRespTypeFULL).
+		NewOrderRespType(gobinance.NewOrderRespTypeFULL).
 		Do(b.ctx)
 	if err != nil {
 		return model.Order{}, err
@@ -364,10 +365,10 @@ func (b *Binance) CreateOrderMarketQuote(side model.SideType, pair string, quant
 
 	order, err := b.client.NewCreateOrderService().
 		Symbol(pair).
-		Type(binance.OrderTypeMarket).
-		Side(binance.SideType(side)).
+		Type(gobinance.OrderTypeMarket).
+		Side(gobinance.SideType(side)).
 		QuoteOrderQty(b.formatQuantity(pair, quantity)).
-		NewOrderRespType(binance.NewOrderRespTypeFULL).
+		NewOrderRespType(gobinance.NewOrderRespTypeFULL).
 		Do(b.ctx)
 	if err != nil {
 		return model.Order{}, err
@@ -434,7 +435,7 @@ func (b *Binance) Order(pair string, id int64) (model.Order, error) {
 	return newOrder(order), nil
 }
 
-func newOrder(order *binance.Order) model.Order {
+func newOrder(order *gobinance.Order) model.Order {
 	var price float64
 	cost, _ := strconv.ParseFloat(order.CummulativeQuoteQuantity, 64)
 	quantity, _ := strconv.ParseFloat(order.ExecutedQuantity, 64)
@@ -487,7 +488,7 @@ func (b *Binance) Account() (model.Account, error) {
 }
 
 func (b *Binance) Position(pair string) (asset, quote float64, err error) {
-	assetTick, quoteTick := SplitAssetQuote(pair)
+	assetTick, quoteTick := xch.SplitAssetQuote(pair)
 	acc, err := b.Account()
 	if err != nil {
 		return 0, 0, err
@@ -510,7 +511,7 @@ func (b *Binance) CandlesSubscription(ctx context.Context, pair, period string) 
 		}
 
 		for {
-			done, _, err := binance.WsKlineServe(pair, period, func(event *binance.WsKlineEvent) {
+			done, _, err := gobinance.WsKlineServe(pair, period, func(event *gobinance.WsKlineEvent) {
 				ba.Reset()
 				candle := CandleFromWsKline(pair, event.Kline)
 
@@ -610,7 +611,7 @@ func (b *Binance) CandlesByPeriod(ctx context.Context, pair, period string,
 	return candles, nil
 }
 
-func CandleFromKline(pair string, k binance.Kline) model.Candle {
+func CandleFromKline(pair string, k gobinance.Kline) model.Candle {
 	t := time.Unix(0, k.OpenTime*int64(time.Millisecond))
 	candle := model.Candle{Pair: pair, Time: t, UpdatedAt: t}
 	candle.Open, _ = strconv.ParseFloat(k.Open, 64)
@@ -623,7 +624,7 @@ func CandleFromKline(pair string, k binance.Kline) model.Candle {
 	return candle
 }
 
-func CandleFromWsKline(pair string, k binance.WsKline) model.Candle {
+func CandleFromWsKline(pair string, k gobinance.WsKline) model.Candle {
 	t := time.Unix(0, k.StartTime*int64(time.Millisecond))
 	candle := model.Candle{Pair: pair, Time: t, UpdatedAt: t}
 	candle.Open, _ = strconv.ParseFloat(k.Open, 64)

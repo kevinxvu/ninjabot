@@ -1,4 +1,4 @@
-package exchange
+package paperwallet
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	xch "github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
 )
 
@@ -103,8 +104,8 @@ func TestPaperWallet_OrderLimit(t *testing.T) {
 		// try to buy again without funds
 		order, err = wallet.CreateOrderLimit(model.SideTypeBuy, "BTCUSDT", 1, 100)
 		require.Empty(t, order)
-		require.Equal(t, &OrderError{
-			Err:      ErrInsufficientFunds,
+		require.Equal(t, &xch.OrderError{
+			Err:      xch.ErrInsufficientFunds,
 			Pair:     "BTCUSDT",
 			Quantity: 1,
 		}, err)
@@ -256,8 +257,8 @@ func TestPaperWallet_OrderMarket(t *testing.T) {
 
 	// insufficient funds
 	order, err = wallet.CreateOrderMarket(model.SideTypeBuy, "BTCUSDT", 100)
-	require.Equal(t, &OrderError{
-		Err:      ErrInsufficientFunds,
+	require.Equal(t, &xch.OrderError{
+		Err:      xch.ErrInsufficientFunds,
 		Pair:     "BTCUSDT",
 		Quantity: 100}, err)
 	require.Empty(t, order)
@@ -298,8 +299,8 @@ func TestPaperWallet_OrderOCO(t *testing.T) {
 
 	// insufficient funds
 	orders, err = wallet.CreateOrderOCO(model.SideTypeSell, "BTCUSDT", 1, 100, 40, 39)
-	require.Equal(t, &OrderError{
-		Err:      ErrInsufficientFunds,
+	require.Equal(t, &xch.OrderError{
+		Err:      xch.ErrInsufficientFunds,
 		Pair:     "BTCUSDT",
 		Quantity: 1}, err)
 	require.Nil(t, orders)
@@ -596,5 +597,4 @@ func TestUpdateAveragePrice(t *testing.T) {
 			})
 		}
 	})
-
 }

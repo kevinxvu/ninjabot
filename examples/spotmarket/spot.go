@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
 	"github.com/rodrigo-brito/ninjabot/server"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
@@ -30,7 +30,7 @@ func main() {
 	}
 
 	// Initialize your exchange
-	binance, err := exchange.NewBinance(ctx, exchange.WithBinanceCredentials(cfg.APIKey, cfg.APISecret))
+	binance, err := exbinance.NewBinance(ctx, exbinance.WithBinanceCredentials(cfg.APIKey, cfg.APISecret))
 	if err != nil {
 		log.Fatal(err)
 	}

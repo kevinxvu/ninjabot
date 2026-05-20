@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	exfeed "github.com/rodrigo-brito/ninjabot/exchange/feed"
 	"github.com/rodrigo-brito/ninjabot/service"
 
 	"github.com/stretchr/testify/assert"
@@ -66,9 +66,9 @@ func TestDownloader_download(t *testing.T) {
 		End:   time.AddDate(0, 0, 20),
 	}
 
-	csvFeed, err := exchange.NewCSVFeed(
+	csvFeed, err := exfeed.NewCSVFeed(
 		"1d",
-		exchange.PairFeed{
+		exfeed.PairFeed{
 			Pair:      "BTCUSDT",
 			File:      "../testdata/btc-1d.csv",
 			Timeframe: "1d",
@@ -87,9 +87,9 @@ func TestDownloader_download(t *testing.T) {
 		err = downloader.Download(ctx, "BTCUSDT", "1d", tmpFile.Name(), WithInterval(param.Start, param.End))
 		require.NoError(t, err)
 
-		csvFeed, err := exchange.NewCSVFeed(
+		csvFeed, err := exfeed.NewCSVFeed(
 			"1d",
-			exchange.PairFeed{
+			exfeed.PairFeed{
 				Pair:      "BTCUSDT",
 				File:      "../testdata/btc-1d.csv",
 				Timeframe: "1d",

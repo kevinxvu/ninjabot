@@ -10,9 +10,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	exfeed "github.com/rodrigo-brito/ninjabot/exchange/feed"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/service"
-	"github.com/rodrigo-brito/ninjabot/storage"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
 )
 
 type fakeStrategy struct{}
@@ -56,18 +57,18 @@ func (e *fakeStrategy) OnCandle(df *Dataframe, broker service.Broker) {
 func TestMarketOrder(t *testing.T) {
 	ctx := context.Background()
 
-	storage, err := storage.FromMemory()
+	storage, err := storagebuntdb.FromMemory()
 	require.NoError(t, err)
 
 	strategy := new(fakeStrategy)
-	csvFeed, err := exchange.NewCSVFeed(
+	csvFeed, err := exfeed.NewCSVFeed(
 		strategy.Timeframe(),
-		exchange.PairFeed{
+		exfeed.PairFeed{
 			Pair:      "BTCUSDT",
 			File:      "testdata/btc-1h.csv",
 			Timeframe: "1h",
 		},
-		exchange.PairFeed{
+		exfeed.PairFeed{
 			Pair:      "ETHUSDT",
 			File:      "testdata/eth-1h.csv",
 			Timeframe: "1h",
@@ -75,11 +76,11 @@ func TestMarketOrder(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	paperWallet := exchange.NewPaperWallet(
+	paperWallet := expaperwallet.NewPaperWallet(
 		ctx,
 		"USDT",
-		exchange.WithPaperAsset("USDT", 10000),
-		exchange.WithDataFeed(csvFeed),
+		expaperwallet.WithPaperAsset("USDT", 10000),
+		expaperwallet.WithDataFeed(csvFeed),
 	)
 
 	bot, err := NewBot(ctx, Settings{

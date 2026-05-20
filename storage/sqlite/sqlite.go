@@ -1,4 +1,4 @@
-package storage
+package sqlite
 
 import (
 	"time"
@@ -7,20 +7,21 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/rodrigo-brito/ninjabot/model"
+	"github.com/rodrigo-brito/ninjabot/storage"
 )
 
 type SQL struct {
 	db *gorm.DB
 }
 
-// FromSQL creates a new SQL connections for orders storage. Example of usage:
+// FromSQL creates a new SQL connection for orders storage. Example of usage:
 //
 //	import "github.com/glebarez/sqlite"
-//	storage, err := storage.FromSQL(sqlite.Open("sqlite.db"), &gorm.Config{})
+//	store, err := sqlite.FromSQL(sqlite.Open("sqlite.db"), &gorm.Config{})
 //	if err != nil {
 //		log.Fatal(err)
 //	}
-func FromSQL(dialect gorm.Dialector, opts ...gorm.Option) (Storage, error) {
+func FromSQL(dialect gorm.Dialector, opts ...gorm.Option) (storage.Storage, error) {
 	db, err := gorm.Open(dialect, opts...)
 	if err != nil {
 		return nil, err
@@ -47,7 +48,7 @@ func FromSQL(dialect gorm.Dialector, opts ...gorm.Option) (Storage, error) {
 
 // CreateOrder creates a new order in a SQL database
 func (s *SQL) CreateOrder(order *model.Order) error {
-	result := s.db.Create(order) // pass pointer of data to Create
+	result := s.db.Create(order)
 	return result.Error
 }
 
@@ -60,8 +61,8 @@ func (s *SQL) UpdateOrder(order *model.Order) error {
 	return result.Error
 }
 
-// Orders filter a list of orders given a filter
-func (s *SQL) Orders(filters ...OrderFilter) ([]*model.Order, error) {
+// Orders filters a list of orders given a filter
+func (s *SQL) Orders(filters ...storage.OrderFilter) ([]*model.Order, error) {
 	orders := make([]*model.Order, 0)
 
 	result := s.db.Find(&orders)
@@ -112,7 +113,6 @@ func (s *SQL) DeleteSession(id string) error {
 	if err := s.db.Where("session_id = ?", id).Delete(&model.SessionEvent{}).Error; err != nil {
 		return err
 	}
-	// Delete orders associated with this session first
 	if err := s.db.Where("session_id = ?", id).Delete(&model.Order{}).Error; err != nil {
 		return err
 	}

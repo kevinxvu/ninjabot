@@ -1,4 +1,4 @@
-package exchange
+package binance
 
 import (
 	"context"
@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adshao/go-binance/v2"
+	gobinance "github.com/adshao/go-binance/v2"
 	"github.com/adshao/go-binance/v2/common"
 	"github.com/adshao/go-binance/v2/futures"
 	"github.com/jpillora/backoff"
 
+	xch "github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
@@ -75,31 +76,31 @@ func WithBinanceFutureLeverage(pair string, leverage int, marginType MarginType)
 
 // NewBinanceFuture will create a new BinanceFuture instance
 func NewBinanceFuture(ctx context.Context, options ...BinanceFutureOption) (*BinanceFuture, error) {
-	binance.WebsocketKeepalive = true
-	exchange := &BinanceFuture{ctx: ctx}
+	gobinance.WebsocketKeepalive = true
+	b := &BinanceFuture{ctx: ctx}
 	for _, option := range options {
-		option(exchange)
+		option(b)
 	}
 
-	exchange.client = futures.NewClient(exchange.APIKey, exchange.APISecret)
-	err := exchange.client.NewPingService().Do(ctx)
+	b.client = futures.NewClient(b.APIKey, b.APISecret)
+	err := b.client.NewPingService().Do(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("binance ping fail: %w", err)
 	}
 
-	results, err := exchange.client.NewExchangeInfoService().Do(ctx)
+	results, err := b.client.NewExchangeInfoService().Do(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Set leverage and margin type
-	for _, option := range exchange.PairOptions {
-		_, err = exchange.client.NewChangeLeverageService().Symbol(option.Pair).Leverage(option.Leverage).Do(ctx)
+	for _, option := range b.PairOptions {
+		_, err = b.client.NewChangeLeverageService().Symbol(option.Pair).Leverage(option.Leverage).Do(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		err = exchange.client.NewChangeMarginTypeService().Symbol(option.Pair).MarginType(option.MarginType).Do(ctx)
+		err = b.client.NewChangeMarginTypeService().Symbol(option.Pair).MarginType(option.MarginType).Do(ctx)
 		if err != nil {
 			if apiError, ok := err.(*common.APIError); !ok || apiError.Code != ErrNoNeedChangeMarginType {
 				return nil, err
@@ -108,7 +109,7 @@ func NewBinanceFuture(ctx context.Context, options ...BinanceFutureOption) (*Bin
 	}
 
 	// Initialize with orders precision and assets limits
-	exchange.assetsInfo = make(map[string]model.AssetInfo)
+	b.assetsInfo = make(map[string]model.AssetInfo)
 	for _, info := range results.Symbols {
 		tradeLimits := model.AssetInfo{
 			BaseAsset:          info.BaseAsset,
@@ -118,25 +119,25 @@ func NewBinanceFuture(ctx context.Context, options ...BinanceFutureOption) (*Bin
 		}
 		for _, filter := range info.Filters {
 			if typ, ok := filter["filterType"]; ok {
-				if typ == string(binance.SymbolFilterTypeLotSize) {
+				if typ == string(gobinance.SymbolFilterTypeLotSize) {
 					tradeLimits.MinQuantity, _ = strconv.ParseFloat(filter["minQty"].(string), 64)
 					tradeLimits.MaxQuantity, _ = strconv.ParseFloat(filter["maxQty"].(string), 64)
 					tradeLimits.StepSize, _ = strconv.ParseFloat(filter["stepSize"].(string), 64)
 				}
 
-				if typ == string(binance.SymbolFilterTypePriceFilter) {
+				if typ == string(gobinance.SymbolFilterTypePriceFilter) {
 					tradeLimits.MinPrice, _ = strconv.ParseFloat(filter["minPrice"].(string), 64)
 					tradeLimits.MaxPrice, _ = strconv.ParseFloat(filter["maxPrice"].(string), 64)
 					tradeLimits.TickSize, _ = strconv.ParseFloat(filter["tickSize"].(string), 64)
 				}
 			}
 		}
-		exchange.assetsInfo[info.Symbol] = tradeLimits
+		b.assetsInfo[info.Symbol] = tradeLimits
 	}
 
 	log.Info("[SETUP] Using Binance Futures exchange")
 
-	return exchange, nil
+	return b, nil
 }
 
 func (b *BinanceFuture) LastQuote(ctx context.Context, pair string) (float64, error) {
@@ -154,12 +155,12 @@ func (b *BinanceFuture) AssetsInfo(pair string) model.AssetInfo {
 func (b *BinanceFuture) validate(pair string, quantity float64) error {
 	info, ok := b.assetsInfo[pair]
 	if !ok {
-		return ErrInvalidAsset
+		return xch.ErrInvalidAsset
 	}
 
 	if quantity > info.MaxQuantity || quantity < info.MinQuantity {
-		return &OrderError{
-			Err:      fmt.Errorf("%w: min: %f max: %f", ErrInvalidQuantity, info.MinQuantity, info.MaxQuantity),
+		return &xch.OrderError{
+			Err:      fmt.Errorf("%w: min: %f max: %f", xch.ErrInvalidQuantity, info.MinQuantity, info.MaxQuantity),
 			Pair:     pair,
 			Quantity: quantity,
 		}
@@ -410,7 +411,7 @@ func (b *BinanceFuture) Account() (model.Account, error) {
 			free = -free
 		}
 
-		asset, _ := SplitAssetQuote(position.Symbol)
+		asset, _ := xch.SplitAssetQuote(position.Symbol)
 
 		balances = append(balances, model.Balance{
 			Asset:    asset,
@@ -441,7 +442,7 @@ func (b *BinanceFuture) Account() (model.Account, error) {
 }
 
 func (b *BinanceFuture) Position(pair string) (asset, quote float64, err error) {
-	assetTick, quoteTick := SplitAssetQuote(pair)
+	assetTick, quoteTick := xch.SplitAssetQuote(pair)
 	acc, err := b.Account()
 	if err != nil {
 		return 0, 0, err

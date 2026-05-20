@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rodrigo-brito/ninjabot/exchange"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 
@@ -251,7 +251,7 @@ func TestChart_IndicatorsByPairWaitsForStrategyWarmup(t *testing.T) {
 }
 
 func TestChart_WithPaperWallet(t *testing.T) {
-	wallet := &exchange.PaperWallet{}
+	wallet := &expaperwallet.PaperWallet{}
 	c, err := NewChart(WithPaperWallet(wallet))
 	require.NoErrorf(t, err, "error when initial chart")
 	require.Equal(t, wallet, c.paperWallet)

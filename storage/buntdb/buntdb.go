@@ -1,4 +1,4 @@
-package storage
+package buntdb
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 	"github.com/tidwall/buntdb"
 
 	"github.com/rodrigo-brito/ninjabot/model"
+	"github.com/rodrigo-brito/ninjabot/storage"
 )
 
 type Bunt struct {
@@ -17,15 +18,15 @@ type Bunt struct {
 	db     *buntdb.DB
 }
 
-func FromMemory() (Storage, error) {
+func FromMemory() (storage.Storage, error) {
 	return newBunt(":memory:")
 }
 
-func FromFile(file string) (Storage, error) {
+func FromFile(file string) (storage.Storage, error) {
 	return newBunt(file)
 }
 
-func newBunt(sourceFile string) (Storage, error) {
+func newBunt(sourceFile string) (storage.Storage, error) {
 	db, err := buntdb.Open(sourceFile)
 	if err != nil {
 		return nil, err
@@ -72,7 +73,7 @@ func (b Bunt) UpdateOrder(order *model.Order) error {
 	})
 }
 
-func (b Bunt) Orders(filters ...OrderFilter) ([]*model.Order, error) {
+func (b Bunt) Orders(filters ...storage.OrderFilter) ([]*model.Order, error) {
 	orders := make([]*model.Order, 0)
 	err := b.db.View(func(tx *buntdb.Tx) error {
 		err := tx.Ascend("update_index", func(_, value string) bool {

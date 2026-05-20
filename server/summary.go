@@ -9,6 +9,7 @@ import (
 
 	ninjabot "github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 	"github.com/rodrigo-brito/ninjabot/tools/metrics"
 )
@@ -67,7 +68,7 @@ func computeHistogram(returns []float64, numBuckets int) []returnBucket {
 }
 
 // computeSummary builds the full structured summary from the bot results and wallet.
-func computeSummary(bot *ninjabot.NinjaBot, wallet *exchange.PaperWallet, req backtestRequest, pairs []string) json.RawMessage {
+func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, req backtestRequest, pairs []string) json.RawMessage {
 	ctrl := bot.Controller()
 	equityValues := wallet.EquityValues()
 

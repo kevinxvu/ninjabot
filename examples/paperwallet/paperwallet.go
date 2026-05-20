@@ -8,8 +8,9 @@ import (
 	"github.com/rodrigo-brito/ninjabot/server"
 
 	"github.com/rodrigo-brito/ninjabot"
-	"github.com/rodrigo-brito/ninjabot/exchange"
-	"github.com/rodrigo-brito/ninjabot/storage"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
+	storagebuntdb "github.com/rodrigo-brito/ninjabot/storage/buntdb"
 	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
@@ -37,25 +38,25 @@ func main() {
 	}
 
 	// Use binance for realtime data feed
-	binance, err := exchange.NewBinance(ctx)
+	binance, err := exbinance.NewBinance(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// creating a storage to save trades
-	storage, err := storage.FromMemory()
+	storage, err := storagebuntdb.FromMemory()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// creating a paper wallet to simulate an exchange waller for fake operataions
 	// paper wallet is simulation of a real exchange wallet
-	paperWallet := exchange.NewPaperWallet(
+	paperWallet := expaperwallet.NewPaperWallet(
 		ctx,
 		"USDT",
-		exchange.WithPaperFee(0.001, 0.001),
-		exchange.WithPaperAsset("USDT", 10000),
-		exchange.WithDataFeed(binance),
+		expaperwallet.WithPaperFee(0.001, 0.001),
+		expaperwallet.WithPaperAsset("USDT", 10000),
+		expaperwallet.WithDataFeed(binance),
 	)
 
 	// initializing my strategy

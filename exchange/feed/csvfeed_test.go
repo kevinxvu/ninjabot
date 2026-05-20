@@ -1,4 +1,4 @@
-package exchange
+package feed
 
 import (
 	"context"
@@ -15,7 +15,7 @@ func TestNewCSVFeed(t *testing.T) {
 		feed, err := NewCSVFeed("1d", PairFeed{
 			Timeframe: "1d",
 			Pair:      "BTCUSDT",
-			File:      "../testdata/btc-1d.csv",
+			File:      "../../testdata/btc-1d.csv",
 		})
 
 		candle := feed.CandlePairTimeFrame["BTCUSDT--1d"][0]
@@ -33,7 +33,7 @@ func TestNewCSVFeed(t *testing.T) {
 		feed, err := NewCSVFeed("1d", PairFeed{
 			Timeframe: "1d",
 			Pair:      "BTCUSDT",
-			File:      "../testdata/btc-1d-header.csv",
+			File:      "../../testdata/btc-1d-header.csv",
 		})
 		require.NoError(t, err)
 
@@ -53,7 +53,7 @@ func TestCSVFeed_CandlesByLimit(t *testing.T) {
 	feed, err := NewCSVFeed("1d", PairFeed{
 		Timeframe: "1d",
 		Pair:      "BTCUSDT",
-		File:      "../testdata/btc-1d.csv",
+		File:      "../../testdata/btc-1d.csv",
 	})
 	require.NoError(t, err)
 	candles, err := feed.CandlesByLimit(context.Background(), "BTCUSDT", "1d", 1)
@@ -74,7 +74,7 @@ func TestCSVFeed_resample(t *testing.T) {
 			PairFeed{
 				Timeframe: "1h",
 				Pair:      "BTCUSDT",
-				File:      "../testdata/btc-1h-2021-05-13.csv",
+				File:      "../../testdata/btc-1h-2021-05-13.csv",
 			})
 		require.NoError(t, err)
 		require.Len(t, feed.CandlePairTimeFrame["BTCUSDT--1d"], 24)
@@ -100,7 +100,7 @@ func TestCSVFeed_resample(t *testing.T) {
 			PairFeed{
 				Timeframe: "1h",
 				Pair:      "BTCUSDT",
-				File:      "../testdata/btc-1h.csv",
+				File:      "../../testdata/btc-1h.csv",
 			})
 		require.NoError(t, err)
 
@@ -122,7 +122,7 @@ func TestCSVFeed_resample(t *testing.T) {
 			PairFeed{
 				Timeframe: "invalid",
 				Pair:      "BTCUSDT",
-				File:      "../testdata/btc-1h-2021-05-13.csv",
+				File:      "../../testdata/btc-1h-2021-05-13.csv",
 			})
 		require.Error(t, err)
 		require.Nil(t, feed)
@@ -179,7 +179,7 @@ func TestIsLastCandlePeriod(t *testing.T) {
 	})
 }
 
-func TestIsFistCandlePeriod(t *testing.T) {
+func TestIsFirstCandlePeriod(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		tt := []struct {
 			sourceTimeFrame string
@@ -196,7 +196,7 @@ func TestIsFistCandlePeriod(t *testing.T) {
 
 		for _, tc := range tt {
 			t.Run(fmt.Sprintf("%s to %s", tc.sourceTimeFrame, tc.targetTimeFrame), func(t *testing.T) {
-				first, err := isFistCandlePeriod(tc.time, tc.sourceTimeFrame, tc.targetTimeFrame)
+				first, err := isFirstCandlePeriod(tc.time, tc.sourceTimeFrame, tc.targetTimeFrame)
 				require.NoError(t, err)
 				require.Equal(t, tc.last, first)
 			})
@@ -204,13 +204,13 @@ func TestIsFistCandlePeriod(t *testing.T) {
 	})
 
 	t.Run("invalid source", func(t *testing.T) {
-		last, err := isFistCandlePeriod(time.Now(), "invalid", "1h")
+		last, err := isFirstCandlePeriod(time.Now(), "invalid", "1h")
 		require.Error(t, err)
 		require.False(t, last)
 	})
 
 	t.Run("not supported interval", func(t *testing.T) {
-		last, err := isFistCandlePeriod(time.Now(), "1d", "1y")
+		last, err := isFirstCandlePeriod(time.Now(), "1d", "1y")
 		require.EqualError(t, err, "invalid timeframe: 1y")
 		require.False(t, last)
 	})

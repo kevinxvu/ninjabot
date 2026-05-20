@@ -11,18 +11,23 @@ import (
 	"github.com/google/uuid"
 	"github.com/rodrigo-brito/ninjabot"
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
+	"github.com/rodrigo-brito/ninjabot/internal/registry"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/plot"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
-	"github.com/rodrigo-brito/ninjabot/strategy/strategies"
+	_ "github.com/rodrigo-brito/ninjabot/strategy/strategies" // registers built-in strategies
 	"github.com/rodrigo-brito/ninjabot/tools/log"
+
+	serverws "github.com/rodrigo-brito/ninjabot/server/ws"
 )
 
 // WsNotifier pushes bot events to WebSocket
 type WsNotifier struct {
 	SessionID string
-	wsManager *MarketWebsocketManager
+	wsManager *serverws.MarketWebsocketManager
 }
 
 func (n WsNotifier) Notify(msg string) {}
@@ -30,7 +35,7 @@ func (n WsNotifier) Notify(msg string) {}
 func (n WsNotifier) OnOrder(order model.Order) {
 	// Gắn thêm sessionID vào order tạm thời trước khi broadcast
 	order.SessionID = n.SessionID
-	n.wsManager.broadcast(WSMessage{
+	n.wsManager.Broadcast(serverws.WSMessage{
 		Type:      "ORDER",
 		SessionID: n.SessionID,
 		Pair:      order.Pair,
@@ -39,7 +44,7 @@ func (n WsNotifier) OnOrder(order model.Order) {
 }
 
 func (n WsNotifier) OnError(err error) {
-	n.wsManager.broadcast(WSMessage{
+	n.wsManager.Broadcast(serverws.WSMessage{
 		Type:      "ERROR",
 		SessionID: n.SessionID,
 		Data:      err.Error(),
@@ -56,8 +61,8 @@ type SignalManager struct {
 	mu        sync.Mutex
 	bots      map[string]*botInstance
 	db        storage.Storage
-	exchange  *exchange.Binance
-	wsManager *MarketWebsocketManager
+	exchange  *exbinance.Binance
+	wsManager *serverws.MarketWebsocketManager
 }
 
 func (m *SignalManager) recordSessionEvent(sessionID string, eventType model.SessionEventType) {
@@ -71,7 +76,7 @@ func (m *SignalManager) recordSessionEvent(sessionID string, eventType model.Ses
 	}
 }
 
-func NewSignalManager(db storage.Storage, exc *exchange.Binance, ws *MarketWebsocketManager) *SignalManager {
+func NewSignalManager(db storage.Storage, exc *exbinance.Binance, ws *serverws.MarketWebsocketManager) *SignalManager {
 	return &SignalManager{
 		bots:      make(map[string]*botInstance),
 		db:        db,
@@ -271,19 +276,19 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 	assets := CalculateBalancesFromOrders(session)
 
 	// Tạo mảng option cho PaperWallet
-	options := []exchange.PaperWalletOption{
-		exchange.WithDataFeed(m.exchange),
+	options := []expaperwallet.PaperWalletOption{
+		expaperwallet.WithDataFeed(m.exchange),
 	}
 
 	// Add WithPaperAsset for each asset that has a balance
 	for asset, amount := range assets {
 		if amount > 0.00000001 { // ignore tiny dust
-			options = append(options, exchange.WithPaperAsset(asset, amount))
+			options = append(options, expaperwallet.WithPaperAsset(asset, amount))
 		}
 	}
 
 	// Cấu hình PaperWallet
-	paperWallet := exchange.NewPaperWallet(
+	paperWallet := expaperwallet.NewPaperWallet(
 		ctx,
 		"USDT",
 		options...,
@@ -295,12 +300,18 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 	}
 
 	// Chọn Strategy
-	var currentStrategy strategy.Strategy
-	switch req.Strategy {
-	case "emacross":
-		currentStrategy = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
-	default:
-		currentStrategy = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
+	currentStrategy, err := registry.Build(req.Strategy, registry.StrategyConfig{
+		Timeframe:  req.Timeframe,
+		FastPeriod: req.FastPeriod,
+		SlowPeriod: req.SlowPeriod,
+	})
+	if err != nil {
+		log.Warnf("unknown strategy %q, falling back to emacross: %v", req.Strategy, err)
+		currentStrategy, _ = registry.Build("emacross", registry.StrategyConfig{
+			Timeframe:  req.Timeframe,
+			FastPeriod: req.FastPeriod,
+			SlowPeriod: req.SlowPeriod,
+		})
 	}
 
 	// Inject Notifier WebSockets
@@ -339,6 +350,7 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 		plot.WithPaperWallet(paperWallet),
 	)
 	if err != nil {
+		cancel()
 		return fmt.Errorf("failed to create chart: %w", err)
 	}
 
@@ -510,14 +522,8 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 	if exists && instance.Chart != nil {
 		session, err := m.db.GetSessionByID(sessionID)
 		if err == nil && len(instance.Chart.CandlesByPair(session.Pair)) == 0 {
-			var currentStrategy strategy.Strategy
-			switch session.Strategy {
-			case "emacross":
-				currentStrategy = strategies.NewCrossEMA(session.Timeframe, 8, 21)
-			default:
-				currentStrategy = strategies.NewCrossEMA(session.Timeframe, 8, 21)
-			}
-			m.hydrateRecentChartCandles(ctx, instance.Chart, session.Pair, session.Timeframe, currentStrategy)
+			restoredStrategy := buildSessionStrategy(session.Strategy, session.Timeframe)
+			m.hydrateRecentChartCandles(ctx, instance.Chart, session.Pair, session.Timeframe, restoredStrategy)
 		}
 		return instance.Chart, nil
 	}
@@ -528,15 +534,7 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 		return nil, fmt.Errorf("session not found: %w", err)
 	}
 
-	var currentStrategy strategy.Strategy
-	switch session.Strategy {
-	case "emacross":
-		// NOTE: if session model doesn't store strategy params, we use default or fallback
-		// Ideally we should store FastPeriod and SlowPeriod in Session struct or as a JSON field
-		currentStrategy = strategies.NewCrossEMA(session.Timeframe, 8, 21)
-	default:
-		currentStrategy = strategies.NewCrossEMA(session.Timeframe, 8, 21)
-	}
+	currentStrategy := buildSessionStrategy(session.Strategy, session.Timeframe)
 
 	chart, _ := plot.NewChart(plot.WithStrategyIndicators(currentStrategy))
 
@@ -557,6 +555,21 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 	}
 
 	return chart, nil
+}
+
+// buildSessionStrategy constructs a Strategy for an existing session using the
+// global registry. Falls back to "emacross" with default parameters when the
+// stored strategy name is not found (e.g. sessions created before a strategy
+// was unregistered). The default periods (8/21) mirror the historical defaults
+// used when sessions were persisted without storing strategy parameters.
+func buildSessionStrategy(name, timeframe string) strategy.Strategy {
+	cfg := registry.StrategyConfig{Timeframe: timeframe, FastPeriod: 8, SlowPeriod: 21}
+	s, err := registry.Build(name, cfg)
+	if err != nil {
+		log.Warnf("unknown strategy %q for session restore, falling back to emacross: %v", name, err)
+		s, _ = registry.Build("emacross", cfg)
+	}
+	return s
 }
 
 // SessionStorageWrapper bọc Storage gốc, tự động inject SessionID vào Order

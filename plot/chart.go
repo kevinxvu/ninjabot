@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	expaperwallet "github.com/rodrigo-brito/ninjabot/exchange/paperwallet"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/strategy"
 
@@ -21,7 +22,7 @@ type Chart struct {
 	ordersIDsByPair map[string]*set.LinkedHashSetINT64
 	orderByID       map[int64]model.Order
 	indicators      []Indicator
-	paperWallet     *exchange.PaperWallet
+	paperWallet     *expaperwallet.PaperWallet
 	strategy        strategy.Strategy
 	lastUpdate      time.Time
 }
@@ -345,7 +346,7 @@ func (c *Chart) Candles() map[string][]Candle {
 	return c.candles
 }
 
-func (c *Chart) PaperWallet() *exchange.PaperWallet {
+func (c *Chart) PaperWallet() *expaperwallet.PaperWallet {
 	c.Lock()
 	defer c.Unlock()
 	return c.paperWallet
@@ -373,7 +374,7 @@ func (c *Chart) SetStrategy(s strategy.Strategy) {
 }
 
 // SetPaperWallet updates the paper wallet used for equity and drawdown data.
-func (c *Chart) SetPaperWallet(w *exchange.PaperWallet) {
+func (c *Chart) SetPaperWallet(w *expaperwallet.PaperWallet) {
 	c.Lock()
 	defer c.Unlock()
 	c.paperWallet = w
@@ -387,7 +388,7 @@ func WithStrategyIndicators(strategy strategy.Strategy) Option {
 	}
 }
 
-func WithPaperWallet(paperWallet *exchange.PaperWallet) Option {
+func WithPaperWallet(paperWallet *expaperwallet.PaperWallet) Option {
 	return func(chart *Chart) {
 		chart.paperWallet = paperWallet
 	}

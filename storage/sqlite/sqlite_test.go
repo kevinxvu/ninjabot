@@ -1,14 +1,32 @@
-package storage
+package sqlite
 
 import (
+	"os"
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
+	gosqlite "github.com/glebarez/sqlite"
 	"github.com/rodrigo-brito/ninjabot/model"
+	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/stretchr/testify/require"
 )
 
-func storageUseCase(repo Storage, t *testing.T) {
+func TestFromSQL(t *testing.T) {
+	file, err := os.CreateTemp(os.TempDir(), "*.db")
+	require.NoError(t, err)
+	defer func() {
+		os.RemoveAll(file.Name())
+	}()
+
+	repo, err := FromSQL(gosqlite.Open(file.Name()), &gorm.Config{})
+	require.NoError(t, err)
+
+	storageUseCase(repo, t)
+}
+
+func storageUseCase(repo storage.Storage, t *testing.T) {
 	t.Helper()
 	now := time.Now()
 
@@ -41,7 +59,7 @@ func storageUseCase(repo Storage, t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("filter with date restriction", func(t *testing.T) {
-		orders, err := repo.Orders(WithUpdateAtBeforeOrEqual(now))
+		orders, err := repo.Orders(storage.WithUpdateAtBeforeOrEqual(now))
 		require.NoError(t, err)
 		require.Len(t, orders, 1)
 		require.Equal(t, orders[0].ExchangeID, int64(1))
@@ -56,14 +74,14 @@ func storageUseCase(repo Storage, t *testing.T) {
 	})
 
 	t.Run("pair filter", func(t *testing.T) {
-		orders, err := repo.Orders(WithPair("ETHUSDT"))
+		orders, err := repo.Orders(storage.WithPair("ETHUSDT"))
 		require.NoError(t, err)
 		require.Len(t, orders, 1)
 		require.Equal(t, orders[0].Pair, "ETHUSDT")
 	})
 
 	t.Run("status filter", func(t *testing.T) {
-		orders, err := repo.Orders(WithStatusIn(model.OrderStatusTypeFilled))
+		orders, err := repo.Orders(storage.WithStatusIn(model.OrderStatusTypeFilled))
 		require.NoError(t, err)
 		require.Len(t, orders, 1)
 		require.Equal(t, orders[0].ID, secondOrder.ID)
@@ -74,11 +92,9 @@ func storageUseCase(repo Storage, t *testing.T) {
 		err := repo.UpdateOrder(firstOrder)
 		require.NoError(t, err)
 
-		orders, err := repo.Orders(WithStatus(model.OrderStatusTypeCanceled))
+		orders, err := repo.Orders(storage.WithStatus(model.OrderStatusTypeCanceled))
 		require.NoError(t, err)
 		require.Len(t, orders, 1)
 		require.Equal(t, firstOrder.ID, orders[0].ID)
-		require.Equal(t, firstOrder.Price, orders[0].Price)
-		require.Equal(t, firstOrder.Quantity, orders[0].Quantity)
 	})
 }

@@ -89,11 +89,9 @@ func (s *Controller) OnCandle(candle model.Candle) {
 	s.updateDataFrame(candle)
 
 	if len(s.dataframe.Close) >= s.warmupPeriod {
-		// Reuse cached sample to avoid repeated allocations
-		sample := s.dataframe.Sample(s.warmupPeriod)
-		s.strategy.Indicators(&sample)
+		s.strategy.Indicators(s.dataframe)
 		if s.started {
-			s.strategy.OnCandle(&sample, s.broker)
+			s.strategy.OnCandle(s.dataframe, s.broker)
 		}
 	}
 }

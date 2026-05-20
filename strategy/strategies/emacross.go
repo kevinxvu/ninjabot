@@ -70,6 +70,7 @@ func (e CrossEMA) Indicators(df *ninjabot.Dataframe) []strategy.ChartIndicator {
 			Overlay:   true,
 			GroupName: "Moving Averages",
 			Time:      df.Time,
+			Warmup:    slow - 1,
 			Metrics: []strategy.IndicatorMetric{
 				{
 					Values: df.Metadata[fastKey],
@@ -101,8 +102,6 @@ func (e *CrossEMA) OnCandle(df *ninjabot.Dataframe, broker service.Broker) {
 	fastKey := fmt.Sprintf("ema%d", fast)
 	slowKey := fmt.Sprintf("sma%d", slow)
 
-	closePrice := df.Close.Last(0)
-
 	assetPosition, quotePosition, err := broker.Position(df.Pair)
 	if err != nil {
 		log.Error(err)
@@ -112,8 +111,7 @@ func (e *CrossEMA) OnCandle(df *ninjabot.Dataframe, broker service.Broker) {
 	if quotePosition >= 10 && // minimum quote position to trade
 		df.Metadata[fastKey].Crossover(df.Metadata[slowKey]) { // trade signal (EMA > SMA)
 
-		amount := quotePosition / closePrice // calculate amount of asset to buy
-		_, err := broker.CreateOrderMarket(ninjabot.SideTypeBuy, df.Pair, amount)
+		_, err := broker.CreateOrderMarketQuote(ninjabot.SideTypeBuy, df.Pair, quotePosition)
 		if err != nil {
 			log.Error(err)
 		}

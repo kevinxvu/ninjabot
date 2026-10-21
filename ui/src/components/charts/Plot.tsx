@@ -4,11 +4,19 @@ import { Spinner } from '@/components/common/Spinner';
 
 // Plotly is ~3MB, so it is loaded on demand and kept out of the main bundle.
 // The factory + dist-min build avoids bundling the full plotly.js source.
+// Both packages are CommonJS. In the production build the default import can be the
+// whole `exports` object (`{ default: fn }`) rather than the function, so unwrap it.
+function interopDefault<T>(mod: T | { default: T }): T {
+  return mod && typeof mod === 'object' && 'default' in mod ? mod.default : mod;
+}
+
 const LazyPlot = lazy(async () => {
-  const [{ default: Plotly }, { default: createPlotlyComponent }] = await Promise.all([
+  const [plotlyModule, factoryModule] = await Promise.all([
     import('plotly.js-dist-min'),
     import('react-plotly.js/factory'),
   ]);
+  const Plotly = interopDefault(plotlyModule.default);
+  const createPlotlyComponent = interopDefault(factoryModule.default);
   return { default: createPlotlyComponent(Plotly) };
 });
 

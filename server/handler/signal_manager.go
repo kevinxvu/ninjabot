@@ -78,6 +78,8 @@ func NewSignalManager(db storage.Storage, exc *exbinance.Binance, ws *serverws.M
 
 // RecoverStaleSessions marks any sessions that were left as "running" in the DB
 // (e.g. after a process crash) as "stopped" and records a STOP event for them.
+// The STOP event timestamp uses session.UpdatedAt (the last DB write before the crash),
+// which is a better estimate of when the bot actually stopped than time.Now().
 func (m *SignalManager) RecoverStaleSessions() {
 	sessions, err := m.db.GetSessionsByType("REALTIME_SIGNAL")
 	if err != nil {
@@ -88,9 +90,15 @@ func (m *SignalManager) RecoverStaleSessions() {
 		if s.Status != "running" {
 			continue
 		}
-		now := time.Now()
+		// Capture the last-known-active time BEFORE we modify the session.
+		// If UpdatedAt was never set after creation, fall back to CreatedAt.
+		stoppedAt := s.UpdatedAt
+		if !stoppedAt.After(s.CreatedAt) {
+			stoppedAt = s.CreatedAt
+		}
+
 		s.Status = "stopped"
-		s.UpdatedAt = now
+		s.UpdatedAt = time.Now()
 		if err := m.db.UpdateSession(s); err != nil {
 			log.Errorf("RecoverStaleSessions: failed to update session %s: %v", s.ID, err)
 			continue
@@ -111,12 +119,12 @@ func (m *SignalManager) RecoverStaleSessions() {
 			if err := m.db.CreateSessionEvent(&model.SessionEvent{
 				SessionID: s.ID,
 				Type:      model.SessionEventTypeStop,
-				CreatedAt: now,
+				CreatedAt: stoppedAt, // last-known-active time, not recovery time
 			}); err != nil {
 				log.Errorf("RecoverStaleSessions: failed to create STOP event for session %s: %v", s.ID, err)
 			}
 		}
-		log.Infof("RecoverStaleSessions: marked session %s as stopped (was left running)", s.ID)
+		log.Infof("RecoverStaleSessions: marked session %s as stopped (stoppedAt: %s)", s.ID, stoppedAt.Format(time.RFC3339))
 	}
 }
 

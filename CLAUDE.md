@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 *   **Run UI Dev Server**: `make ui-dev` (Runs Vite server at `http://localhost:5173`)
 *   **Build UI**: `make ui-build` (Compiles React app to `ui/dist/` for embedding)
 *   **Lint UI**: `make ui-lint` (Runs ESLint)
+*   **Format UI**: `make ui-format` (Runs Prettier with the Tailwind class sorter)
 
 ### Testing and Linting
 *   **Run all tests**: `make test` (Includes race detector and coverage)
@@ -40,12 +41,17 @@ Key components and directory structure:
 *   **`indicator/`**: Wrappers for technical analysis (TA) tools, primarily powered by `go-talib`. Includes common indicators like EMA, SMA, MACD, Stochastic, CCI, Supertrend, etc.
 *   **`order/`**: Responsible for the order lifecycle, routing, and providing a pub/sub feed for order status updates.
 *   **`plot/`**: An internal charting component to visualize candlestick data, indicator lines, and buy/sell execution points.
-*   **`ui/`**: Modern React/Vite/Tailwind frontend for the Web Backtest UI. Built assets (`ui/dist/`) are bundled into the Go binary via `go:embed`.
+*   **`ui/`**: Modern React/Vite/Tailwind v4 + shadcn/ui frontend for the Web Backtest UI. Built assets (`ui/dist/`) are bundled into the Go binary via `go:embed`. Layout of `ui/src/` (import with the `@/` alias):
+    *   `api/`: typed axios client, one module per backend area (`market`, `backtest`, `signals`) and response types in `types.ts`.
+    *   `components/ui/`: shadcn/ui primitives (add new ones with `npx shadcn@latest add <name>` from `ui/`).
+    *   `components/common|layout|market|strategy|charts/`: shared app components (StatCard, SectionCard, PageHeader, PairSelect, StrategyFields, Plotly `Plot` wrapper + `PriceChart`...).
+    *   `features/<module>/`: pages and module-only components for Dashboard, Backtesting and Realtime Signals.
+    *   `hooks/` (`useAsync`, `useMarketSocket`, ...) and `lib/` (formatting, time, candles, storage helpers).
 *   **`examples/`**: Contains practical implementation reference code showing how to wire up the bot for backtesting, paper trading, and real market usage.
 
 ## Development Specifics
 
-*   **UI/Frontend Design:** The Web UI (`ui/`) strictly follows a **Payment Gateway / Fintech Minimalism** aesthetic (e.g., Stripe, Vercel). Always use flat design, subtle borders, soft drop shadows (`var(--card-shadow)`), and Indigo/Slate brand colors. Use `label-style` for small uppercase text and pastel badges for statuses. Never use brutalist or overly colorful/cluttered designs.
+*   **UI/Frontend Design:** The Web UI (`ui/`) strictly follows a **Payment Gateway / Fintech Minimalism** aesthetic (e.g., Stripe, Vercel). Always use flat design, subtle borders, soft drop shadows (`var(--card-shadow)`), and Indigo/Slate brand colors. Use `label-style` for small uppercase text and pastel badges for statuses (`Badge` variants `success`/`danger`/`warning`/`muted`). Style with the theme tokens from `ui/src/index.css` (`bg-card`, `text-muted-foreground`, `text-success`...) rather than raw hex or `var(--...)`. Never use brutalist or overly colorful/cluttered designs.
 *   **API Limitations:** Be aware that Binance Klines API has a hard limit of 1000 candles per request. When building features that require large historical datasets (like long-running realtime signal charts), you must implement pagination logic rather than just passing a large `limit`.
 *   When testing order execution logic, heavily utilize the `exchange.PaperWallet` component to simulate broker interactions without risk.
 *   Always ensure mathematical precision when working with `indicator/` calculations or modifying `model.Candle` / `model.Order` logic, as this directly impacts trading results.

@@ -78,6 +78,10 @@ ui-build:
 ui-lint:
 	cd ui && npm run lint
 
+## ui-format: Format the UI codebase with Prettier
+ui-format:
+	cd ui && npm run format
+
 ## ── Code Quality ─────────────────────────────────────────────────────────────
 
 ## fmt: Format all Go files using gofmt

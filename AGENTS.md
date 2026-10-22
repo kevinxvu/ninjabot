@@ -87,10 +87,10 @@ docs/backtest-flow.md     Detailed backtest flow walkthrough (Vietnamese)
 | `GET /api/data?pair=X` | Chart payload of the **last** backtest for a pair (candles+orders, indicators, shapes, equity/asset values, max drawdown) |
 | `GET /api/summary` | Aggregate KPIs of the last backtest (404 until one has run) |
 | `GET /api/history?pair=X` | Trade history CSV |
-| `GET /api/pairs` | `{pairs: string[]}` from `exchange/pairs.json`; `?pairs=A,B` returns `{A: {Asset, Quote, Logo}}` |
+| `GET /api/pairs` | `{pairs: string[]}` from `exchange/pairs.json`; `?pairs=A,B` returns `{A: {asset, quote, logo}}` |
 | `GET /api/market/tickers?pairs=` | Last prices (`{pair: price}`) |
-| `GET /api/market/candles?pair=&timeframe=&limit=` | Binance klines via `CandlesByLimit` (default limit 100, Binance max 1000) |
-| `GET /api/market/portfolio` | Binance account value in USDT; returns `{error}` with 200 when the API key is missing or invalid |
+| `GET /api/market/candles?pair=&timeframe=&limit=` | Binance klines via `CandlesByLimit` (default limit 100; 400 outside 1..1000) |
+| `GET /api/market/portfolio` | Binance account value in USDT; 503 when the API key is missing or invalid |
 | `GET /api/realtime-signals` | List sessions |
 | `POST /api/realtime-signals/start` | Start a session (`StartSignalRequest`), returns the session |
 | `GET /api/realtime-signals/:id` | Session with orders, events, wallet balances |
@@ -100,12 +100,14 @@ docs/backtest-flow.md     Detailed backtest flow walkthrough (Vietnamese)
 | `GET /ws/market` | WebSocket. Server → client messages: `TICKER {pair, price}`, `CANDLE {pair, data: model.Candle}`, `ORDER {session_id, data}`, `ERROR`. Client → server: `{action: "SUBSCRIBE_CANDLE", pair, timeframe}` |
 
 All handlers are wrapped with `serverhandler.Middleware` (panic recovery + request log).
+Every API error is JSON `{"error": "..."}` written with `writeError`; map domain errors with `errorStatus`
+(`storage.ErrNotFound` → 404, `ErrSessionBusy` → 409). Unknown `/api/` paths return a JSON 404.
 
-JSON casing differs by source. `plot` candles use lowercase keys (`time`, `open`, ...). `model.Candle` (from `/api/market/candles` and WS `CANDLE` messages) uses capitalized keys (`Time`, `Open`, `Complete`, ...). Orders, sessions and events use snake_case. `ui/src/lib/candles.ts#normalizeCandle` accepts both candle shapes.
+JSON casing differs by source. `plot` candles use lowercase keys (`time`, `open`, ...). `model.Candle` (from `/api/market/candles` and WS `CANDLE` messages) uses capitalized keys (`Time`, `Open`, `Complete`, ...). Orders, sessions, events, balances and pair info use snake_case. `ui/src/lib/candles.ts#normalizeCandle` accepts both candle shapes.
 
 ### Backtest flow
 
-`HandleBacktest` normalises the request: strategy-forced timeframes (`dca`/`ocosell` → 1d, `trailingstop`/`turtle` → 4h), defaults, and `fast < slow` validation. `runBacktest` then:
+`HandleBacktest` runs on a context detached from the request (30 min cap; the UI uses a matching axios timeout) and normalises the request: strategy-forced timeframes (`dca`/`ocosell` → 1d, `trailingstop`/`turtle` → 4h), defaults, and `fast < slow` validation. `runBacktest` then:
 1. Downloads klines per pair into a temp dir (`download.Downloader`, public Binance API).
 2. Builds `exfeed.CSVFeed`, an in-memory BuntDB store and a `PaperWallet`.
 3. Resets the **shared** `plot.Chart` (`Reset`, `SetStrategy`, `SetPaperWallet`).
@@ -120,7 +122,8 @@ See `docs/backtest-flow.md` for a step-by-step walkthrough.
 ### Realtime signals (`server/handler/signal_manager.go`)
 
 - Sessions, orders and session events are persisted with gorm/SQLite in `ninjabot.db` (`storage/sqlite`). `ninjabot.db` is git-ignored local state.
-- Each running session is a background `bot.Run` goroutine on a `PaperWallet` fed by live Binance data. Its strategy is built via `internal/registry` (only `emacross` and `turtle` are registered; the UI only offers `emacross`).
+- Each running session is a background `bot.Run` goroutine on a `PaperWallet` fed by live Binance data, on its own context (never the request's). Its strategy is built via `internal/registry` from the session's stored `fast_period`/`slow_period` (only `emacross` and `turtle` are registered; the UI only offers `emacross`).
+- Start/resume reserve the session (`starting` map) and fetch chart candles without holding `SignalManager.mu`. `StopSession` persists the stopped state synchronously.
 - On resume, wallet balances are rebuilt from order history (`CalculateBalancesFromOrders`).
 - `RecoverStaleSessions` marks sessions left `running` after a crash as `stopped`. The STOP event uses the session's last `UpdatedAt`.
 - `GetSessionChart` rebuilds a fresh chart per request. `fetchSessionChartCandles` paginates Binance klines in 1000-candle windows. Keep that pattern for any long history fetch (Binance's hard limit is 1000 candles per request).
@@ -128,7 +131,7 @@ See `docs/backtest-flow.md` for a step-by-step walkthrough.
 
 ### WebSocket caveat
 
-`MarketWebsocketManager` holds **one** active kline stream for the whole server, and every message is broadcast to every client. Any `SUBSCRIBE_CANDLE` replaces the stream for everyone, so two tabs watching different pairs/timeframes interfere with each other. Clients must filter `CANDLE` messages by `pair` (the UI does). The ticker stream is fixed to BTC/ETH/SOL/BNB-USDT at startup.
+`MarketWebsocketManager` holds **one** active kline stream for the whole server, and every message is broadcast to every client (each client has its own send queue; slow clients are dropped). Any `SUBSCRIBE_CANDLE` replaces the stream for everyone, so two tabs watching different pairs/timeframes interfere with each other. Clients must filter `CANDLE` messages by `pair` (the UI does). The ticker stream is fixed to BTC/ETH/SOL/BNB-USDT at startup.
 
 ## Frontend (`ui/`)
 

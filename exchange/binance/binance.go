@@ -21,6 +21,8 @@ type Binance struct {
 	ctx        context.Context
 	client     *gobinance.Client
 	assetsInfo map[string]model.AssetInfo
+	// trading holds the spot symbols currently open for trading.
+	trading    map[string]bool
 	HeikinAshi bool
 	Testnet    bool
 
@@ -109,7 +111,11 @@ func NewBinance(ctx context.Context, options ...BinanceOption) (*Binance, error)
 
 	// Initialize with orders precision and assets limits
 	b.assetsInfo = make(map[string]model.AssetInfo)
+	b.trading = make(map[string]bool)
 	for _, info := range results.Symbols {
+		if info.Status == string(gobinance.SymbolStatusTypeTrading) {
+			b.trading[info.Symbol] = true
+		}
 		tradeLimits := model.AssetInfo{
 			BaseAsset:          info.BaseAsset,
 			QuoteAsset:         info.QuoteAsset,
@@ -145,6 +151,12 @@ func (b *Binance) LastQuote(ctx context.Context, pair string) (float64, error) {
 		return 0, err
 	}
 	return candles[0].Close, nil
+}
+
+// IsTrading reports whether pair is listed on Binance spot and currently open
+// for trading (delisted, halted and futures-only symbols return false).
+func (b *Binance) IsTrading(pair string) bool {
+	return b.trading[pair]
 }
 
 func (b *Binance) AssetsInfo(pair string) model.AssetInfo {

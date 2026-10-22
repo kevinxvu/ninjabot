@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/glebarez/sqlite"
 	exbinance "github.com/rodrigo-brito/ninjabot/exchange/binance"
@@ -37,6 +38,12 @@ func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
 		fmt.Printf("Warning: Could not load pairs.json: %v\n", err)
 	}
 
+	var isTrading func(string) bool
+	if exc != nil {
+		isTrading = exc.IsTrading
+	}
+	pairsData = tradablePairs(pairsData, isTrading)
+
 	dbStorage, err := storagesqlite.FromSQL(sqlite.Open("ninjabot.db"), &gorm.Config{})
 	if err != nil {
 		fmt.Printf("Warning: Could not initialize SQLite database: %v\n", err)
@@ -65,4 +72,23 @@ func (s *Server) Start(ctx context.Context, port int) error {
 		return err
 	}
 	return nil
+}
+
+// tradablePairs drops pairs the web app cannot use: delivery futures
+// contracts (e.g. "BTCUSDT_260327") and, when isTrading is known, every symbol
+// that is not currently trading on Binance spot (delisted pairs, leveraged
+// tokens, futures-only symbols such as "1000PEPEUSDT"). Backtests and realtime
+// signals both read spot klines.
+func tradablePairs(pairs map[string]serverhandler.PairInfo, isTrading func(string) bool) map[string]serverhandler.PairInfo {
+	result := make(map[string]serverhandler.PairInfo, len(pairs))
+	for pair, info := range pairs {
+		if strings.Contains(pair, "_") {
+			continue
+		}
+		if isTrading != nil && !isTrading(pair) {
+			continue
+		}
+		result[pair] = info
+	}
+	return result
 }

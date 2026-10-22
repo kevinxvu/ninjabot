@@ -118,7 +118,7 @@ docs/backtest-flow.md     Detailed backtest flow walkthrough (Vietnamese)
 | `GET /api/data?pair=X` | Chart payload of the **last** backtest for a pair (candles+orders, indicators, shapes, equity/asset values, max drawdown) |
 | `GET /api/summary` | Aggregate KPIs of the last backtest (404 until one has run) |
 | `GET /api/history?pair=X` | Trade history CSV |
-| `GET /api/pairs` | `{pairs: string[]}` from `exchange/pairs.json`; `?pairs=A,B` returns `{A: {asset, quote, logo}}` |
+| `GET /api/pairs` | `{pairs: string[]}` from `exchange/pairs.json`, limited at startup to symbols currently trading on Binance spot (`tradablePairs` in `server/server.go`); `?pairs=A,B` returns `{A: {asset, quote, logo}}` |
 | `GET /api/market/tickers?pairs=` | Last prices (`{pair: price}`) |
 | `GET /api/market/candles?pair=&timeframe=&limit=` | Binance klines via `CandlesByLimit` (default limit 100; 400 outside 1..1000) |
 | `GET /api/market/portfolio` | Binance account value in USDT; 503 when the API key is missing or invalid |

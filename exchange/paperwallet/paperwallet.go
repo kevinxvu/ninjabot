@@ -172,14 +172,14 @@ func (p *PaperWallet) MaxDrawdown() (float64, time.Time, time.Time) {
 		return 0, time.Time{}, time.Time{}
 	}
 
+	// The first iteration always resets the local window (localMin > 0).
 	localMin := math.MaxFloat64
-	localMinBase := p.equityValues[0].Value
-	localMinStart := p.equityValues[0].Time
-	localMinEnd := p.equityValues[0].Time
+	var localMinBase float64
+	var localMinStart, localMinEnd time.Time
 
 	// Only drops (negative accumulated changes) can become the result.
 	globalMin := 0.0
-	globalMinBase := localMinBase
+	var globalMinBase float64
 	var globalMinStart, globalMinEnd time.Time
 
 	for i := 1; i < len(p.equityValues); i++ {

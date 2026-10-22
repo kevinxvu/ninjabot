@@ -12,6 +12,7 @@ export interface Order {
   status: string;
   price: number;
   quantity: number;
+  /** Realized profit ratio; non-zero only for orders that reduced or closed a position. */
   profit?: number;
   created_at?: Timestamp;
   updated_at?: Timestamp;
@@ -85,13 +86,14 @@ export interface ChartData {
   equity_values?: TimeValue[];
   quote?: string;
   asset?: string;
-  max_drawdown?: { start: Timestamp; end: Timestamp; value: string } | null;
+  /** Max drawdown window; `value` is a non-positive percentage (-12.5 = -12.5%). Null when equity never dropped. */
+  max_drawdown?: { start: Timestamp; end: Timestamp; value: number } | null;
 }
 
 export interface PairInfo {
-  Asset: string;
-  Quote: string;
-  Logo?: string;
+  asset: string;
+  quote: string;
+  logo?: string;
 }
 
 export interface AssetBalance {
@@ -178,9 +180,10 @@ export interface BacktestSummary {
 export type SessionStatus = 'running' | 'stopped' | string;
 
 export interface WalletBalance {
-  Asset: string;
-  Free: number;
-  Lock: number;
+  asset: string;
+  free: number;
+  lock: number;
+  leverage: number;
 }
 
 export interface SignalSession {

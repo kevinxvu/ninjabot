@@ -164,8 +164,11 @@ func (p *PaperWallet) AvgLongPrice(pair string) float64 {
 	return 0.0
 }
 
+// MaxDrawdown returns the largest equity drop as a non-positive ratio
+// (-0.25 = -25%) with its start and end time. It returns 0 and zero times
+// when the equity never dropped.
 func (p *PaperWallet) MaxDrawdown() (float64, time.Time, time.Time) {
-	if len(p.equityValues) < 1 {
+	if len(p.equityValues) < 2 {
 		return 0, time.Time{}, time.Time{}
 	}
 
@@ -174,10 +177,10 @@ func (p *PaperWallet) MaxDrawdown() (float64, time.Time, time.Time) {
 	localMinStart := p.equityValues[0].Time
 	localMinEnd := p.equityValues[0].Time
 
-	globalMin := localMin
+	// Only drops (negative accumulated changes) can become the result.
+	globalMin := 0.0
 	globalMinBase := localMinBase
-	globalMinStart := localMinStart
-	globalMinEnd := localMinEnd
+	var globalMinStart, globalMinEnd time.Time
 
 	for i := 1; i < len(p.equityValues); i++ {
 		diff := p.equityValues[i].Value - p.equityValues[i-1].Value
@@ -200,6 +203,9 @@ func (p *PaperWallet) MaxDrawdown() (float64, time.Time, time.Time) {
 		}
 	}
 
+	if globalMin == 0 || globalMinBase <= 0 {
+		return 0, time.Time{}, time.Time{}
+	}
 	return globalMin / globalMinBase, globalMinStart, globalMinEnd
 }
 

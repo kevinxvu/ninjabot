@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -12,10 +13,12 @@ import (
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 
+// drawdown is the max drawdown window; Value is a non-positive percentage
+// (-12.5 = -12.5%), matching summaryStat.MaxDrawdownPct.
 type drawdown struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
-	Value string    `json:"value"`
+	Value float64   `json:"value"`
 }
 
 func (h *Handler) HandleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -38,12 +41,13 @@ func (h *Handler) HandleChartData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var maxDrawdown *drawdown
-	if h.chart.PaperWallet() != nil {
-		value, start, end := h.chart.PaperWallet().MaxDrawdown()
-		maxDrawdown = &drawdown{
-			Start: start,
-			End:   end,
-			Value: fmt.Sprintf("%.1f", value*100),
+	if wallet := h.chart.PaperWallet(); wallet != nil {
+		if value, start, end := wallet.MaxDrawdown(); value < 0 {
+			maxDrawdown = &drawdown{
+				Start: start,
+				End:   end,
+				Value: math.Round(value*10000) / 100,
+			}
 		}
 	}
 

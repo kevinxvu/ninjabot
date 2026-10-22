@@ -51,8 +51,8 @@ type Order struct {
 
 	// Internal use (Plot)
 	RefPrice    float64 `json:"ref_price" gorm:"-"`
-	Profit      float64 `json:"profit" gorm:"-"`
-	ProfitValue float64 `json:"profit_value" gorm:"-"`
+	Profit      float64 `json:"profit"`
+	ProfitValue float64 `json:"profit_value"`
 	Candle      Candle  `json:"-" gorm:"-"`
 }
 

@@ -37,7 +37,7 @@ func (h *Handler) HandlePairs(w http.ResponseWriter, r *http.Request) {
 
 	// 2. With param: return detailed object per requested pair.
 	pairs := strings.Split(pairsParam, ",")
-	result := make(map[string]interface{})
+	result := make(map[string]PairInfo)
 
 	h.mu.Lock()
 	for _, p := range pairs {

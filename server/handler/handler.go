@@ -24,7 +24,7 @@ type Handler struct {
 	summaryJSON json.RawMessage
 	exc         *exbinance.Binance
 	wsManager   *serverws.MarketWebsocketManager
-	pairsData   map[string]interface{}
+	pairsData   map[string]PairInfo
 	db          storage.Storage
 	signalMgr   *SignalManager
 }
@@ -34,7 +34,7 @@ func New(
 	chart *plot.Chart,
 	exc *exbinance.Binance,
 	wsManager *serverws.MarketWebsocketManager,
-	pairsData map[string]interface{},
+	pairsData map[string]PairInfo,
 	db storage.Storage,
 ) *Handler {
 	h := &Handler{

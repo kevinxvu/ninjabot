@@ -11,12 +11,12 @@ interface TickerCardProps {
 
 export function TickerCard({ pair, price, info }: TickerCardProps) {
   const { asset, quote } = splitPair(pair);
-  const name = info?.Asset || asset;
+  const name = info?.asset || asset;
 
   return (
     <div className="rounded-xl border bg-card p-5 shadow-card">
       <div className="flex items-center gap-2">
-        <CoinIcon asset={name} src={info?.Logo} />
+        <CoinIcon asset={name} src={info?.logo} />
         <div>
           <h3 className="text-sm font-semibold">
             {asset}-{quote === 'USDT' ? 'USD' : quote}

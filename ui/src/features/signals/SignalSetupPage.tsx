@@ -42,8 +42,8 @@ export function SignalSetupPage() {
     marketApi.getPairsInfo([form.pair]).then((info) => info[form.pair] ?? null),
   );
   const fallback = splitPair(form.pair);
-  const asset = pairInfo.data?.Asset ?? fallback.asset;
-  const quote = pairInfo.data?.Quote ?? fallback.quote;
+  const asset = pairInfo.data?.asset ?? fallback.asset;
+  const quote = pairInfo.data?.quote ?? fallback.quote;
   // Default to the quote asset unless the user explicitly picked the base asset.
   const initialAsset = form.initial_asset === asset ? asset : quote;
 

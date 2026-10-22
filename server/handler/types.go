@@ -77,6 +77,14 @@ type assetBalance struct {
 	ValueUSDT float64 `json:"value_usdt"`
 }
 
+// PairInfo describes a trading pair from exchange/pairs.json. The file uses
+// capitalized keys; encoding/json matches them case-insensitively.
+type PairInfo struct {
+	Asset string `json:"asset"`
+	Quote string `json:"quote"`
+	Logo  string `json:"logo,omitempty"`
+}
+
 // PortfolioResponse is the response body for GET /api/market/portfolio.
 type PortfolioResponse struct {
 	TotalValueUSDT float64        `json:"total_value_usdt"`

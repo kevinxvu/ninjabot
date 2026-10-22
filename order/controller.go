@@ -314,6 +314,12 @@ func (c *Controller) updatePosition(o *model.Order) {
 	}
 
 	if result != nil {
+		// Persist the realized profit so it survives a reload from storage
+		// (e.g. realtime sessions rebuilt from SQLite).
+		if err := c.storage.UpdateOrder(o); err != nil {
+			c.notifyError(fmt.Errorf("store order profit: %w", err))
+		}
+
 		// TODO: replace by a slice of Result
 		summary := c.Results[o.Pair]
 		summary.invalidateCache() // Invalidate cache when modifying

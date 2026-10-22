@@ -78,7 +78,7 @@ export function BacktestSummary({ summary }: { summary: Summary }) {
         <StatCard
           label="Max Drawdown"
           value={`${formatNumber(summary.max_drawdown_pct, 2)}%`}
-          valueClassName={summary.max_drawdown_pct <= 0 ? 'text-destructive' : 'text-success'}
+          valueClassName={summary.max_drawdown_pct < 0 ? 'text-destructive' : undefined}
         />
         <StatCard label="Total Volume" value={`${formatNumber(summary.total_volume)} ${base}`} />
       </div>

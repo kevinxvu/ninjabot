@@ -48,10 +48,10 @@ export function SessionMeta({ session }: { session: SignalSession }) {
           <span className="self-center label-style">Wallet:</span>
           {session.balances.map((balance) => (
             <span
-              key={balance.Asset}
+              key={balance.asset}
               className="rounded bg-card px-2 py-1 text-xs font-medium tabular-nums shadow-sm"
             >
-              {balance.Free.toFixed(4)} <span className="text-muted-foreground">{balance.Asset}</span>
+              {balance.free.toFixed(4)} <span className="text-muted-foreground">{balance.asset}</span>
             </span>
           ))}
         </div>

@@ -27,10 +27,12 @@ func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
 	defaultPairs := []string{"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"}
 	go wsManager.StartTickerSubscription(defaultPairs)
 
-	pairsData := make(map[string]interface{})
+	pairsData := make(map[string]serverhandler.PairInfo)
 	fileData, err := os.ReadFile("exchange/pairs.json")
 	if err == nil {
-		json.Unmarshal(fileData, &pairsData)
+		if err := json.Unmarshal(fileData, &pairsData); err != nil {
+			fmt.Printf("Warning: Could not parse pairs.json: %v\n", err)
+		}
 	} else {
 		fmt.Printf("Warning: Could not load pairs.json: %v\n", err)
 	}

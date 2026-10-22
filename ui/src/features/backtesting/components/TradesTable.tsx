@@ -34,7 +34,7 @@ export function TradesTable({ trades, limit = 50 }: { trades: TradeRecord[]; lim
             <TableCell>{formatNumber(trade.quantity, 6)}</TableCell>
             <TableCell className="font-medium">${formatNumber(trade.price * trade.quantity, 2)}</TableCell>
             <TableCell>
-              {trade.profit !== undefined ? (
+              {trade.profit ? (
                 <Badge variant={trade.profit >= 0 ? 'success' : 'danger'} className="font-bold">
                   {formatPercent(trade.profit)}
                 </Badge>

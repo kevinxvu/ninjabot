@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Annotations, Data, Shape } from 'plotly.js';
 import type { ChartData } from '@/api/types';
+import { formatNumber } from '@/lib/format';
 import { formatPlotlyLocalDate, toEpochMs } from '@/lib/time';
 import { Plot } from './Plot';
 import { CHART_COLORS, FONT_FAMILY, INTERACTIVE_CONFIG, baseTimeLayout } from './theme';
@@ -61,7 +62,7 @@ export function EquityChart({ data, height = 300 }: { data: EquityChartData; hei
         y: top * 0.95,
         xref: 'x',
         yref: 'y',
-        text: `Drawdown<br>${drawdown.value}%`,
+        text: `Drawdown<br>${formatNumber(drawdown.value, 1)}%`,
         showarrow: false,
         font: { size: 11, color: CHART_COLORS.down, family: FONT_FAMILY },
       });

@@ -19,10 +19,10 @@ type Settings struct {
 }
 
 type Balance struct {
-	Asset    string
-	Free     float64
-	Lock     float64
-	Leverage float64
+	Asset    string  `json:"asset"`
+	Free     float64 `json:"free"`
+	Lock     float64 `json:"lock"`
+	Leverage float64 `json:"leverage"`
 }
 
 type AssetInfo struct {

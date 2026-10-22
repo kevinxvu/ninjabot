@@ -21,16 +21,15 @@ type drawdown struct {
 	Value float64   `json:"value"`
 }
 
+// HandleHealth answers 503 when the chart has not received a candle for over
+// an hour (the status must be written before the body, or it is ignored).
 func (h *Handler) HandleHealth(w http.ResponseWriter, _ *http.Request) {
-	if time.Since(h.chart.LastUpdate()) > time.Hour+10*time.Minute {
-		_, err := w.Write([]byte(h.chart.LastUpdate().String()))
-		if err != nil {
-			log.Error(err)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+	lastUpdate := h.chart.LastUpdate()
+	if time.Since(lastUpdate) > time.Hour+10*time.Minute {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "stale", "last_update": lastUpdate})
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "last_update": lastUpdate})
 }
 
 func (h *Handler) HandleChartData(w http.ResponseWriter, r *http.Request) {

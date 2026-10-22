@@ -23,3 +23,5 @@
 .claude/*
 .vscode
 *__debug_*
+# Coverage report (make cover-html)
+coverage.html

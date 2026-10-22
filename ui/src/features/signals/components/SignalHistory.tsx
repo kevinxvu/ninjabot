@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react';
 import type { Order, SessionEvent } from '@/api/types';
+import { formatNumber, formatPercent, formatPrice, pnlTextClass } from '@/lib/format';
+import { splitPair } from '@/lib/pairs';
 import { formatClientDateTime, toEpochMs } from '@/lib/time';
 import { cn } from '@/lib/utils';
 
@@ -44,13 +47,36 @@ export function SignalHistory({ events, orders }: { events: SessionEvent[]; orde
             key={`order-${item.order.id ?? index}`}
             tone={item.order.side === 'BUY' ? 'success' : 'destructive'}
             title={item.order.side}
-            aside={`$${item.order.price?.toFixed(4)}`}
-            detail={`Qty: ${item.order.quantity}`}
+            aside={<OrderPrice order={item.order} />}
+            detail={<OrderDetail order={item.order} />}
             time={item.time}
           />
         ),
       )}
     </ul>
+  );
+}
+
+function OrderPrice({ order }: { order: Order }) {
+  const { quote } = splitPair(order.pair ?? '');
+  return (
+    <>
+      {formatPrice(order.price)} <span className="text-xs font-medium">{quote}</span>
+    </>
+  );
+}
+
+function OrderDetail({ order }: { order: Order }) {
+  const { asset } = splitPair(order.pair ?? '');
+  return (
+    <>
+      Qty: {formatNumber(order.quantity, 6)} {asset}
+      {!!order.profit && (
+        <span className={cn('ml-2 font-medium', pnlTextClass(order.profit))}>
+          {formatPercent(order.profit)}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -69,8 +95,8 @@ function HistoryEntry({
 }: {
   tone: keyof typeof TONE_CLASS;
   title: string;
-  aside: string;
-  detail: string;
+  aside: ReactNode;
+  detail: ReactNode;
   time: Order['created_at'];
 }) {
   return (

@@ -24,6 +24,10 @@ import (
 	"github.com/rodrigo-brito/ninjabot/tools/metrics"
 )
 
+// backtestTimeout bounds a single backtest run. The run is detached from the
+// HTTP request so a client disconnect does not abort it halfway.
+const backtestTimeout = 30 * time.Minute
+
 // HandleBacktest receives POST /api/backtest, downloads historical data,
 // runs the simulation, and returns the list of pairs to redirect to.
 func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +113,18 @@ func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	req.Pairs = strings.Join(pairs, ",") // store normalised pairs
-	if err := h.runBacktest(r.Context(), req, pairs); err != nil {
+
+	// Drop the previous result up front so /api/data and /api/summary never
+	// describe two different runs.
+	h.mu.Lock()
+	h.summaryJSON = nil
+	h.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), backtestTimeout)
+	defer cancel()
+
+	if err := h.runBacktest(ctx, req, pairs); err != nil {
+		h.chart.Reset()
 		writeJSON(w, http.StatusInternalServerError, backtestResponse{Error: err.Error()})
 		return
 	}
@@ -211,7 +226,10 @@ func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []
 	bot.Summary()
 
 	// Compute and store structured summary for /api/summary.
-	summary := computeSummary(bot, wallet, req, pairs)
+	summary, err := computeSummary(bot, wallet, req, pairs)
+	if err != nil {
+		return err
+	}
 	h.mu.Lock()
 	h.summaryJSON = summary
 	h.mu.Unlock()
@@ -273,7 +291,7 @@ func computeHistogram(returns []float64, numBuckets int) []returnBucket {
 }
 
 // computeSummary builds the full structured summary from the bot results and wallet.
-func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, req backtestRequest, pairs []string) json.RawMessage {
+func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, req backtestRequest, pairs []string) (json.RawMessage, error) {
 	ctrl := bot.Controller()
 	equityValues := wallet.EquityValues()
 
@@ -435,8 +453,7 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, r
 
 	b, err := json.Marshal(data)
 	if err != nil {
-		log.Errorf("marshal summary: %v", err)
-		return nil
+		return nil, fmt.Errorf("marshal summary: %w", err)
 	}
-	return b
+	return b, nil
 }

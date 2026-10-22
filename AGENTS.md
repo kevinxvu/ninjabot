@@ -122,9 +122,9 @@ docs/backtest-flow.md     Detailed backtest flow walkthrough (Vietnamese)
 | `GET /api/market/tickers?pairs=` | Last prices (`{pair: price}`) |
 | `GET /api/market/candles?pair=&timeframe=&limit=` | Binance klines via `CandlesByLimit` (default limit 100; 400 outside 1..1000) |
 | `GET /api/market/portfolio` | Binance account value in USDT; 503 when the API key is missing or invalid |
-| `GET /api/realtime-signals` | List sessions |
+| `GET /api/realtime-signals` | List sessions with `stats` (no orders) |
 | `POST /api/realtime-signals/start` | Start a session (`StartSignalRequest`), returns the session |
-| `GET /api/realtime-signals/:id` | Session with orders, events, wallet balances |
+| `GET /api/realtime-signals/:id` | Session with orders, events, wallet balances and `stats` |
 | `GET /api/realtime-signals/:id/chart` | Chart payload for the session (also includes `events`) |
 | `POST /api/realtime-signals/:id/stop`, `/resume` | Lifecycle |
 | `DELETE /api/realtime-signals/:id` | Delete session |
@@ -162,6 +162,7 @@ See `docs/backtest-flow.md` for a step-by-step walkthrough.
 - Each running session is a background `bot.Run` goroutine on a `PaperWallet` fed by live Binance data, on its own context (never the request's). Its strategy is built via `internal/registry` from the session's stored `fast_period`/`slow_period` (only `emacross` and `turtle` are registered; the UI only offers `emacross`).
 - Start/resume reserve the session (`starting` map) and fetch chart candles without holding `SignalManager.mu`. `StopSession` persists the stopped state synchronously.
 - On resume, wallet balances are rebuilt from order history (`CalculateBalancesFromOrders`).
+- `stats` (`model.SessionStats`, `server/handler/session_stats.go`) values the wallet at the last price in the pair's quote asset. PnL compares it with the initial capital valued at the same price, i.e. against simply holding the initial asset. Win rate uses orders with a realized `profit` (orders saved before profit was persisted have none). The detail page re-values it with the live ticker (`features/signals/sessionStats.ts`); keep both formulas in sync.
 - `RecoverStaleSessions` marks sessions left `running` after a crash as `stopped`. The STOP event uses the session's last `UpdatedAt`.
 - `GetSessionChart` serves the running bot's in-memory chart; for stopped sessions it rebuilds a fresh chart per request, limited to the last `maxRealtimeChartCandles` (3000) candles. `fetchSessionChartCandles` paginates Binance klines in 1000-candle windows. Keep that pattern for any long history fetch (Binance's hard limit is 1000 candles per request).
 - Orders are pushed to WS clients through `WsNotifier`.

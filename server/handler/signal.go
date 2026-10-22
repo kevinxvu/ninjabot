@@ -10,7 +10,6 @@ import (
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/internal/registry"
-	"github.com/rodrigo-brito/ninjabot/model"
 )
 
 const signalsPathPrefix = "/api/realtime-signals/"
@@ -30,7 +29,7 @@ func (h *Handler) HandleRealtimeSignal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if allowMethod(w, r, http.MethodGet) {
-			h.handleGetRealtimeSignal(w, id)
+			h.handleGetRealtimeSignal(w, r, id)
 		}
 	case "stop":
 		if allowMethod(w, r, http.MethodPost) {
@@ -133,6 +132,14 @@ func (h *Handler) HandleListRealtimeSignals(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	prices := h.sessionPrices(r.Context(), sessions...)
+	for _, sess := range sessions {
+		price, ok := prices[sess.Pair]
+		sess.Stats = computeSessionStats(sess, h.sessionBalances(sess), price, ok)
+		// Orders are only loaded for the stats; the list stays lightweight.
+		sess.Orders = nil
+	}
+
 	writeJSON(w, http.StatusOK, sessions)
 }
 
@@ -160,7 +167,7 @@ func (h *Handler) handleSessionChart(w http.ResponseWriter, r *http.Request, id 
 }
 
 // handleGetRealtimeSignal GET /api/realtime-signals/:id
-func (h *Handler) handleGetRealtimeSignal(w http.ResponseWriter, id string) {
+func (h *Handler) handleGetRealtimeSignal(w http.ResponseWriter, r *http.Request, id string) {
 	session, err := h.db.GetSessionByID(id)
 	if err != nil {
 		writeError(w, errorStatus(err), err.Error())
@@ -173,25 +180,9 @@ func (h *Handler) handleGetRealtimeSignal(w http.ResponseWriter, id string) {
 		session.Status = "stopped"
 	}
 
-	if session.Status == "running" {
-		balances, err := h.signalMgr.GetSessionBalances(id)
-		if err == nil {
-			session.Balances = balances
-		}
-	}
-	if session.Balances == nil {
-		balancesMap := CalculateBalancesFromOrders(session)
-
-		for asset, amount := range balancesMap {
-			if amount > 0.00000001 {
-				session.Balances = append(session.Balances, model.Balance{
-					Asset: asset,
-					Free:  amount,
-					Lock:  0,
-				})
-			}
-		}
-	}
+	session.Balances = h.sessionBalances(session)
+	price, ok := h.sessionPrices(r.Context(), session)[session.Pair]
+	session.Stats = computeSessionStats(session, session.Balances, price, ok)
 	session.Events = sessionEventsForDisplay(session)
 
 	writeJSON(w, http.StatusOK, session)

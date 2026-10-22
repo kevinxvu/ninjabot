@@ -91,3 +91,29 @@ func TestHandleListRealtimeSignalsDoesNotWrite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "running", stored.Status)
 }
+
+func TestHandleListRealtimeSignalsIncludesStats(t *testing.T) {
+	h := newSignalTestHandler(t)
+	require.NoError(t, h.db.CreateSession(&model.Session{
+		ID: "with-orders", Type: "REALTIME_SIGNAL", Status: "stopped", Pair: "BTCUSDT",
+		InitialAsset: "USDT", InitialAmount: 1000, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		Orders: []model.Order{
+			{ExchangeID: 1, Pair: "BTCUSDT", Side: model.SideTypeBuy, Status: model.OrderStatusTypeFilled, Price: 100, Quantity: 1},
+			{ExchangeID: 2, Pair: "BTCUSDT", Side: model.SideTypeSell, Status: model.OrderStatusTypeFilled, Price: 110, Quantity: 1, Profit: 0.1},
+		},
+	}))
+
+	rec := httptest.NewRecorder()
+	h.HandleListRealtimeSignals(rec, httptest.NewRequest(http.MethodGet, "/api/realtime-signals", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var sessions []model.Session
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &sessions))
+	require.Len(t, sessions, 1)
+	require.Empty(t, sessions[0].Orders)
+	require.NotNil(t, sessions[0].Stats)
+	require.Equal(t, 2, sessions[0].Stats.Trades)
+	require.Equal(t, 1, sessions[0].Stats.Wins)
+	// No exchange in tests, so values stay unknown.
+	require.Nil(t, sessions[0].Stats.PnL)
+}

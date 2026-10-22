@@ -20,4 +20,26 @@ type Session struct {
 
 	// Dynamically populated via API if running
 	Balances []Balance `json:"balances,omitempty" gorm:"-"`
+	// Stats is computed by the API from the orders, balances and current price.
+	Stats *SessionStats `json:"stats,omitempty" gorm:"-"`
+}
+
+// SessionStats summarizes a session's performance in the pair's quote asset.
+// Value fields are nil when the current price is unknown.
+type SessionStats struct {
+	Quote        string   `json:"quote"`
+	CurrentPrice *float64 `json:"current_price"`
+	// InitialValue is the initial capital valued at the current price, so PnL
+	// measures the strategy against simply holding the initial asset.
+	InitialValue *float64 `json:"initial_value"`
+	CurrentValue *float64 `json:"current_value"`
+	PnL          *float64 `json:"pnl"`
+	// PnLPct is the PnL as a percentage of InitialValue (5 means +5%).
+	PnLPct *float64 `json:"pnl_pct"`
+	// Trades counts filled orders; ClosedTrades those with a realized profit.
+	Trades       int `json:"trades"`
+	ClosedTrades int `json:"closed_trades"`
+	Wins         int `json:"wins"`
+	// WinRate is Wins/ClosedTrades as a ratio, nil without closed trades.
+	WinRate *float64 `json:"win_rate"`
 }

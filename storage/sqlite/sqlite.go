@@ -92,10 +92,10 @@ func (s *SQL) UpdateSession(session *model.Session) error {
 	return s.db.Save(session).Error
 }
 
-// GetSessionsByType returns all sessions of a specific type
+// GetSessionsByType returns all sessions of a specific type with their orders.
 func (s *SQL) GetSessionsByType(sessionType string) ([]*model.Session, error) {
 	var sessions []*model.Session
-	err := s.db.Where("type = ?", sessionType).Order("created_at desc").Find(&sessions).Error
+	err := s.db.Preload("Orders").Where("type = ?", sessionType).Order("created_at desc").Find(&sessions).Error
 	return sessions, err
 }
 

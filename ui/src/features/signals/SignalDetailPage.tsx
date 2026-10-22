@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Play, Square, Trash2 } from 'lucide-react';
+import { getErrorMessage } from '@/api/client';
 import { signalsApi } from '@/api/signals';
 import type { MarketCandle, MarketSocketMessage } from '@/api/types';
 import { EquityChart } from '@/components/charts/EquityChart';
@@ -137,6 +138,12 @@ export function SignalDetailPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div className="flex min-h-[500px] flex-col gap-6 lg:col-span-3">
+          {!!chart.error && (
+            <ErrorAlert
+              title="Chart unavailable"
+              message={getErrorMessage(chart.error, 'Failed to load chart')}
+            />
+          )}
           {chart.loading ? (
             <LoadingState label="Loading chart..." />
           ) : (

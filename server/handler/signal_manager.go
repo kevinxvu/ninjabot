@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -19,7 +20,7 @@ import (
 	serverws "github.com/rodrigo-brito/ninjabot/server/ws"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
-	_ "github.com/rodrigo-brito/ninjabot/strategy/strategies" // registers built-in strategies
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies" // also registers built-in strategies
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 
@@ -49,6 +50,14 @@ func (n WsNotifier) OnError(err error) {
 	})
 }
 
+var (
+	// ErrSessionBusy is returned when a session already has a running or
+	// starting bot.
+	ErrSessionBusy = errors.New("session is already running")
+
+	errStartCancelled = errors.New("session was stopped while starting")
+)
+
 type botInstance struct {
 	Bot    *ninjabot.NinjaBot
 	Cancel context.CancelFunc
@@ -59,6 +68,7 @@ type botInstance struct {
 type SignalManager struct {
 	mu        sync.Mutex
 	bots      map[string]*botInstance
+	starting  map[string]context.CancelFunc
 	db        storage.Storage
 	exchange  *exbinance.Binance
 	wsManager *serverws.MarketWebsocketManager
@@ -68,6 +78,7 @@ type SignalManager struct {
 func NewSignalManager(db storage.Storage, exc *exbinance.Binance, ws *serverws.MarketWebsocketManager) *SignalManager {
 	m := &SignalManager{
 		bots:      make(map[string]*botInstance),
+		starting:  make(map[string]context.CancelFunc),
 		db:        db,
 		exchange:  exc,
 		wsManager: ws,
@@ -180,13 +191,26 @@ func timeframeDuration(timeframe string) (time.Duration, bool) {
 	return 0, false
 }
 
-func realtimeChartStartTime(session *model.Session, currentStrategy strategy.Strategy) time.Time {
+// maxRealtimeChartCandles caps the history rebuilt for a session chart. Older
+// long-running sessions on small timeframes (e.g. months of 1m candles) would
+// otherwise need hundreds of sequential Binance requests and an unplottable
+// payload.
+const maxRealtimeChartCandles = 3000
+
+// realtimeChartStartTime returns where the session chart history begins: the
+// session start minus the strategy warmup, but no more than
+// maxRealtimeChartCandles before end.
+func realtimeChartStartTime(session *model.Session, currentStrategy strategy.Strategy, end time.Time) time.Time {
 	duration, ok := timeframeDuration(session.Timeframe)
 	if !ok {
 		return session.CreatedAt
 	}
 
-	return session.CreatedAt.Add(-duration * time.Duration(currentStrategy.WarmupPeriod()))
+	start := session.CreatedAt.Add(-duration * time.Duration(currentStrategy.WarmupPeriod()))
+	if earliest := end.Add(-duration * maxRealtimeChartCandles); start.Before(earliest) {
+		start = earliest
+	}
+	return start
 }
 
 func realtimeChartEndTime(session *model.Session, now time.Time) time.Time {
@@ -250,7 +274,7 @@ func sessionEventsForDisplay(session *model.Session) []model.SessionEvent {
 }
 
 func (m *SignalManager) fetchSessionChartCandles(ctx context.Context, session *model.Session, currentStrategy strategy.Strategy, end time.Time) ([]model.Candle, error) {
-	start := realtimeChartStartTime(session, currentStrategy)
+	start := realtimeChartStartTime(session, currentStrategy, end)
 	duration, ok := timeframeDuration(session.Timeframe)
 	if !ok {
 		return m.exchange.CandlesByPeriod(ctx, session.Pair, session.Timeframe, start, end)
@@ -341,7 +365,10 @@ func CalculateBalancesFromOrders(session *model.Session) map[string]float64 {
 	return balancesMap
 }
 
-func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.Session, req StartSignalRequest) error {
+// buildBot creates the paper wallet, bot and chart for a session. ctx is only
+// used for the initial candle fetch; the bot itself lives on botCtx so it
+// outlives the HTTP request that started it.
+func (m *SignalManager) buildBot(ctx, botCtx context.Context, session *model.Session) (*botInstance, error) {
 	// Reconstruct portfolio balances from order history
 	assets := CalculateBalancesFromOrders(session)
 
@@ -356,28 +383,16 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 	}
 
 	paperWallet := expaperwallet.NewPaperWallet(
-		ctx,
+		botCtx,
 		"USDT",
 		options...,
 	)
 
 	settings := ninjabot.Settings{
-		Pairs: []string{req.Pair},
+		Pairs: []string{session.Pair},
 	}
 
-	currentStrategy, err := registry.Build(req.Strategy, registry.StrategyConfig{
-		Timeframe:  req.Timeframe,
-		FastPeriod: req.FastPeriod,
-		SlowPeriod: req.SlowPeriod,
-	})
-	if err != nil {
-		log.Warnf("unknown strategy %q, falling back to emacross: %v", req.Strategy, err)
-		currentStrategy, _ = registry.Build("emacross", registry.StrategyConfig{
-			Timeframe:  req.Timeframe,
-			FastPeriod: req.FastPeriod,
-			SlowPeriod: req.SlowPeriod,
-		})
-	}
+	currentStrategy := buildSessionStrategy(session)
 
 	notifier := WsNotifier{
 		SessionID: session.ID,
@@ -390,7 +405,7 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 	}
 
 	bot, err := ninjabot.NewBot(
-		ctx,
+		botCtx,
 		settings,
 		paperWallet,
 		currentStrategy,
@@ -398,26 +413,23 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 		ninjabot.WithPaperWallet(paperWallet),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to init bot: %w", err)
+		return nil, fmt.Errorf("failed to init bot: %w", err)
 	}
 
 	ninjabot.WithNotifier(notifier)(bot)
-
-	botCtx, cancel := context.WithCancel(context.Background())
 
 	chart, err := plot.NewChart(
 		plot.WithStrategyIndicators(currentStrategy),
 		plot.WithPaperWallet(paperWallet),
 	)
 	if err != nil {
-		cancel()
-		return fmt.Errorf("failed to create chart: %w", err)
+		return nil, fmt.Errorf("failed to create chart: %w", err)
 	}
 
 	candles, err := m.fetchSessionChartCandles(ctx, session, currentStrategy, realtimeChartEndTime(session, time.Now()))
 	if err != nil {
 		log.Errorf("Failed to fetch session candles for chart: %v", err)
-		m.hydrateRecentChartCandles(ctx, chart, req.Pair, req.Timeframe, currentStrategy)
+		m.hydrateRecentChartCandles(ctx, chart, session.Pair, session.Timeframe, currentStrategy)
 	} else {
 		for _, c := range candles {
 			chart.OnCandle(c)
@@ -431,42 +443,108 @@ func (m *SignalManager) startBotFromSession(ctx context.Context, session *model.
 	ninjabot.WithCandleSubscription(chart)(bot)
 	ninjabot.WithOrderSubscription(chart)(bot)
 
-	m.bots[session.ID] = &botInstance{
-		Bot:    bot,
-		Cancel: cancel,
-		Chart:  chart,
-	}
-
-	go func() {
-		log.Infof("Starting realtime signal session %s for pair %s", session.ID, req.Pair)
-		err := bot.Run(botCtx)
-		if err != nil && err != context.Canceled {
-			log.Errorf("Bot session %s error: %v", session.ID, err)
-		}
-
-		m.mu.Lock()
-		delete(m.bots, session.ID)
-		m.mu.Unlock()
-
-		s, _ := m.db.GetSessionByID(session.ID)
-		if s != nil && s.Status != "error" {
-			s.Status = "stopped"
-			s.UpdatedAt = time.Now()
-			m.db.UpdateSession(s)
-		}
-	}()
-
-	return nil
+	return &botInstance{
+		Bot:   bot,
+		Chart: chart,
+	}, nil
 }
 
-func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest) (*model.Session, error) {
+// reserve marks a session as starting so concurrent start/resume calls cannot
+// launch it twice. The returned context is cancelled by StopSession.
+func (m *SignalManager) reserve(sessionID string) (context.Context, context.CancelFunc, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	sessionID := uuid.New().String()
+	if _, ok := m.bots[sessionID]; ok {
+		return nil, nil, ErrSessionBusy
+	}
+	if _, ok := m.starting[sessionID]; ok {
+		return nil, nil, ErrSessionBusy
+	}
 
+	botCtx, cancel := context.WithCancel(context.Background())
+	m.starting[sessionID] = cancel
+	return botCtx, cancel, nil
+}
+
+// launch builds the bot for a reserved session without holding the manager
+// lock (it fetches candles from Binance), then registers and runs it.
+func (m *SignalManager) launch(ctx, botCtx context.Context, cancel context.CancelFunc, session *model.Session) error {
+	instance, err := m.buildBot(ctx, botCtx, session)
+
+	m.mu.Lock()
+	delete(m.starting, session.ID)
+	if err == nil && botCtx.Err() != nil {
+		err = errStartCancelled
+	}
+	if err != nil {
+		m.mu.Unlock()
+		cancel()
+		return err
+	}
+	instance.Cancel = cancel
+	m.bots[session.ID] = instance
+	m.mu.Unlock()
+
+	go m.run(botCtx, session.ID, instance)
+	return nil
+}
+
+func (m *SignalManager) run(ctx context.Context, sessionID string, instance *botInstance) {
+	log.Infof("Starting realtime signal session %s", sessionID)
+	err := instance.Bot.Run(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		log.Errorf("Bot session %s error: %v", sessionID, err)
+	}
+
+	// StopSession already removed the instance and updated the DB. Only
+	// handle bots that ended on their own, and never touch a newer instance
+	// started by a later resume.
+	m.mu.Lock()
+	owned := m.bots[sessionID] == instance
+	if owned {
+		delete(m.bots, sessionID)
+	}
+	m.mu.Unlock()
+	if !owned {
+		return
+	}
+
+	instance.Cancel()
+	s, err := m.db.GetSessionByID(sessionID)
+	if err != nil || s.Status != "running" {
+		return
+	}
+	s.Status = "stopped"
+	s.UpdatedAt = time.Now()
+	if err := m.db.UpdateSession(s); err != nil {
+		log.Errorf("Failed to mark session %s as stopped: %v", sessionID, err)
+	}
+	m.recordSessionEvent(sessionID, model.SessionEventTypeStop)
+}
+
+// IsRunning reports whether the session has a live or starting bot.
+func (m *SignalManager) IsRunning(sessionID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, running := m.bots[sessionID]
+	_, starting := m.starting[sessionID]
+	return running || starting
+}
+
+// markFailed flags a session whose bot could not be started.
+func (m *SignalManager) markFailed(session *model.Session) {
+	session.Status = "error"
+	session.UpdatedAt = time.Now()
+	if err := m.db.UpdateSession(session); err != nil {
+		log.Errorf("Failed to mark session %s as failed: %v", session.ID, err)
+	}
+}
+
+func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest) (*model.Session, error) {
+	now := time.Now()
 	session := &model.Session{
-		ID:            sessionID,
+		ID:            uuid.New().String(),
 		Type:          "REALTIME_SIGNAL",
 		Status:        "running",
 		Pair:          req.Pair,
@@ -474,20 +552,26 @@ func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest
 		Timeframe:     req.Timeframe,
 		InitialAsset:  req.InitialAsset,
 		InitialAmount: req.InitialAmount,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		FastPeriod:    req.FastPeriod,
+		SlowPeriod:    req.SlowPeriod,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
-	err := m.db.CreateSession(session)
-	if err != nil {
+	if err := m.db.CreateSession(session); err != nil {
 		return nil, fmt.Errorf("failed to create session in db: %w", err)
 	}
 	m.recordSessionEvent(session.ID, model.SessionEventTypeStart)
 
-	err = m.startBotFromSession(ctx, session, req)
+	botCtx, cancel, err := m.reserve(session.ID)
 	if err != nil {
-		session.Status = "error"
-		m.db.UpdateSession(session)
+		return nil, err
+	}
+	if err := m.launch(ctx, botCtx, cancel, session); err != nil {
+		if errors.Is(err, errStartCancelled) {
+			return m.db.GetSessionByID(session.ID)
+		}
+		m.markFailed(session)
 		return nil, err
 	}
 
@@ -495,61 +579,70 @@ func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest
 }
 
 func (m *SignalManager) ResumeSession(ctx context.Context, sessionID string) (*model.Session, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("session not found: %w", err)
+		return nil, err
 	}
 
-	if session.Status == "running" {
-		if _, exists := m.bots[sessionID]; exists {
-			return session, nil
-		}
+	botCtx, cancel, err := m.reserve(sessionID)
+	if errors.Is(err, ErrSessionBusy) {
+		session.Status = "running"
+		return session, nil
 	}
-
-	req := StartSignalRequest{
-		Pair:          session.Pair,
-		Timeframe:     session.Timeframe,
-		Strategy:      session.Strategy,
-		InitialAsset:  session.InitialAsset,
-		InitialAmount: session.InitialAmount,
+	if err != nil {
+		return nil, err
 	}
 
 	session.Status = "running"
 	session.UpdatedAt = time.Now()
-	m.db.UpdateSession(session)
+	if err := m.db.UpdateSession(session); err != nil {
+		m.mu.Lock()
+		delete(m.starting, sessionID)
+		m.mu.Unlock()
+		cancel()
+		return nil, fmt.Errorf("update session %s: %w", sessionID, err)
+	}
 	m.recordSessionEvent(session.ID, model.SessionEventTypeResume)
 
-	err = m.startBotFromSession(ctx, session, req)
-	if err != nil {
-		session.Status = "error"
-		m.db.UpdateSession(session)
+	if err := m.launch(ctx, botCtx, cancel, session); err != nil {
+		if errors.Is(err, errStartCancelled) {
+			return m.db.GetSessionByID(sessionID)
+		}
+		m.markFailed(session)
 		return nil, err
 	}
 
 	return session, nil
 }
 
+// StopSession cancels the session's bot (running or still starting) and
+// persists the stopped state before returning, so a follow-up GET sees it.
 func (m *SignalManager) StopSession(sessionID string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	instance, running := m.bots[sessionID]
+	if running {
+		delete(m.bots, sessionID)
+		instance.Cancel()
+	}
+	cancelStart, starting := m.starting[sessionID]
+	if starting {
+		cancelStart()
+	}
+	m.mu.Unlock()
 
-	instance, exists := m.bots[sessionID]
-	if !exists {
-		s, err := m.db.GetSessionByID(sessionID)
-		if err == nil && s.Status == "running" {
-			s.Status = "stopped"
-			s.UpdatedAt = time.Now()
-			m.db.UpdateSession(s)
-			m.recordSessionEvent(sessionID, model.SessionEventTypeStop)
-		}
+	session, err := m.db.GetSessionByID(sessionID)
+	if err != nil {
+		return err
+	}
+	if session.Status != "running" && !running && !starting {
 		return nil
 	}
 
-	instance.Cancel()
-	delete(m.bots, sessionID)
+	session.Status = "stopped"
+	session.UpdatedAt = time.Now()
+	if err := m.db.UpdateSession(session); err != nil {
+		return fmt.Errorf("update session %s: %w", sessionID, err)
+	}
 	m.recordSessionEvent(sessionID, model.SessionEventTypeStop)
 	return nil
 }
@@ -570,17 +663,26 @@ func (m *SignalManager) GetSessionBalances(sessionID string) ([]model.Balance, e
 	return acc.Balances, nil
 }
 
-func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (*plot.Chart, error) {
+// GetSessionChart rebuilds the chart of a session and returns it with the
+// session it was built from.
+func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (*plot.Chart, *model.Session, error) {
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("session not found: %w", err)
+		return nil, nil, err
 	}
-
-	currentStrategy := buildSessionStrategy(session.Strategy, session.Timeframe)
 
 	m.mu.Lock()
 	instance, exists := m.bots[sessionID]
 	m.mu.Unlock()
+
+	// A running bot keeps its own chart up to date from the live candle and order
+	// feeds, so serve it directly instead of re-downloading history from Binance on
+	// every refresh (the UI refreshes on each closed candle).
+	if exists && instance.Chart != nil && len(instance.Chart.CandlesByPair(session.Pair)) > 0 {
+		return instance.Chart, session, nil
+	}
+
+	currentStrategy := buildSessionStrategy(session)
 
 	// Build chart options. Carry over the paper wallet from the running instance
 	// so equity/asset values remain accurate even after a fresh candle rebuild.
@@ -593,7 +695,7 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 
 	chart, err := plot.NewChart(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create chart: %w", err)
+		return nil, nil, fmt.Errorf("failed to create chart: %w", err)
 	}
 
 	// Always fetch candles fresh from the exchange so any gaps caused by missed
@@ -610,7 +712,7 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 			if len(instance.Chart.CandlesByPair(session.Pair)) == 0 {
 				m.hydrateRecentChartCandles(ctx, instance.Chart, session.Pair, session.Timeframe, currentStrategy)
 			}
-			return instance.Chart, nil
+			return instance.Chart, session, nil
 		}
 		if fetchErr != nil {
 			log.Errorf("Failed to fetch session candles for chart: %v", fetchErr)
@@ -622,17 +724,31 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 		chart.OnOrder(o)
 	}
 
-	return chart, nil
+	return chart, session, nil
 }
 
-// buildSessionStrategy constructs a Strategy for an existing session using the
-// global registry. Falls back to "emacross" with default parameters when the
-// stored strategy name is not found.
-func buildSessionStrategy(name, timeframe string) strategy.Strategy {
-	cfg := registry.StrategyConfig{Timeframe: timeframe, FastPeriod: 8, SlowPeriod: 21}
-	s, err := registry.Build(name, cfg)
+// fillStrategyParams sets the strategy parameters the session actually runs
+// with, so sessions stored without periods (older builds) show the defaults.
+func fillStrategyParams(session *model.Session) {
+	if s, ok := buildSessionStrategy(session).(*strategies.CrossEMA); ok {
+		session.FastPeriod = s.FastPeriod
+		session.SlowPeriod = s.SlowPeriod
+	}
+}
+
+// buildSessionStrategy constructs the session's Strategy using the global
+// registry and the session's stored parameters (zero values fall back to the
+// strategy defaults). Falls back to "emacross" when the stored strategy name
+// is not registered, e.g. for sessions created by an older build.
+func buildSessionStrategy(session *model.Session) strategy.Strategy {
+	cfg := registry.StrategyConfig{
+		Timeframe:  session.Timeframe,
+		FastPeriod: session.FastPeriod,
+		SlowPeriod: session.SlowPeriod,
+	}
+	s, err := registry.Build(session.Strategy, cfg)
 	if err != nil {
-		log.Warnf("unknown strategy %q for session restore, falling back to emacross: %v", name, err)
+		log.Warnf("unknown strategy %q for session %s, falling back to emacross: %v", session.Strategy, session.ID, err)
 		s, _ = registry.Build("emacross", cfg)
 	}
 	return s

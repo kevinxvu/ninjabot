@@ -345,6 +345,20 @@ func TestPaperWallet_MaxDrawndown(t *testing.T) {
 			end:    time.Date(2019, time.January, 2, 0, 0, 0, 0, time.UTC),
 		},
 		{
+			name:   "single value",
+			values: []AssetValue{{Time: time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC), Value: 10}},
+			result: 0,
+		},
+		{
+			name: "only up",
+			values: []AssetValue{
+				{Time: time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC), Value: 10},
+				{Time: time.Date(2019, time.January, 2, 0, 0, 0, 0, time.UTC), Value: 12},
+				{Time: time.Date(2019, time.January, 3, 0, 0, 0, 0, time.UTC), Value: 15},
+			},
+			result: 0,
+		},
+		{
 			name: "up and down",
 			values: []AssetValue{
 				{Time: time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC), Value: 1},

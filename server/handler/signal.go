@@ -2,105 +2,108 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
-	"github.com/rodrigo-brito/ninjabot/model"
+	"github.com/rodrigo-brito/ninjabot/internal/registry"
 )
+
+const signalsPathPrefix = "/api/realtime-signals/"
+
+// HandleRealtimeSignal dispatches /api/realtime-signals/:id[/action].
+func (h *Handler) HandleRealtimeSignal(w http.ResponseWriter, r *http.Request) {
+	id, action, _ := strings.Cut(strings.Trim(strings.TrimPrefix(r.URL.Path, signalsPathPrefix), "/"), "/")
+	if id == "" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	switch action {
+	case "":
+		if r.Method == http.MethodDelete {
+			h.handleDeleteRealtimeSignal(w, id)
+			return
+		}
+		if allowMethod(w, r, http.MethodGet) {
+			h.handleGetRealtimeSignal(w, r, id)
+		}
+	case "stop":
+		if allowMethod(w, r, http.MethodPost) {
+			h.handleStopRealtimeSignal(w, id)
+		}
+	case "resume":
+		if allowMethod(w, r, http.MethodPost) {
+			h.handleResumeRealtimeSignal(w, r, id)
+		}
+	case "chart":
+		if allowMethod(w, r, http.MethodGet) {
+			h.handleSessionChart(w, r, id)
+		}
+	default:
+		writeError(w, http.StatusNotFound, "not found")
+	}
+}
 
 // HandleStartRealtimeSignal POST /api/realtime-signals/start
 func (h *Handler) HandleStartRealtimeSignal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !allowMethod(w, r, http.MethodPost) {
 		return
 	}
 
 	var req StartSignalRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if req.Pair == "" || req.Timeframe == "" || req.Strategy == "" || req.InitialAsset == "" || req.InitialAmount <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+	if err := normalizeStartRequest(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	session, err := h.signalMgr.StartSession(r.Context(), req)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, session)
 }
 
-// HandleDeleteRealtimeSignal DELETE /api/realtime-signals/:id
-func (h *Handler) HandleDeleteRealtimeSignal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+// handleDeleteRealtimeSignal DELETE /api/realtime-signals/:id
+func (h *Handler) handleDeleteRealtimeSignal(w http.ResponseWriter, id string) {
+	if err := h.signalMgr.StopSession(id); err != nil {
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
 
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 4 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
-		return
-	}
-	sessionID := pathParts[3]
-
-	h.signalMgr.StopSession(sessionID)
-
-	err := h.db.DeleteSession(sessionID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := h.db.DeleteSession(id); err != nil {
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
-// HandleStopRealtimeSignal POST /api/realtime-signals/:id/stop
-func (h *Handler) HandleStopRealtimeSignal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 5 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
-		return
-	}
-	sessionID := pathParts[3]
-
-	err := h.signalMgr.StopSession(sessionID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+// handleStopRealtimeSignal POST /api/realtime-signals/:id/stop
+func (h *Handler) handleStopRealtimeSignal(w http.ResponseWriter, id string) {
+	if err := h.signalMgr.StopSession(id); err != nil {
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "stopped"})
 }
 
-// HandleResumeRealtimeSignal POST /api/realtime-signals/:id/resume
-func (h *Handler) HandleResumeRealtimeSignal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 5 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
-		return
-	}
-	sessionID := pathParts[3]
-
-	session, err := h.signalMgr.ResumeSession(r.Context(), sessionID)
+// handleResumeRealtimeSignal POST /api/realtime-signals/:id/resume
+func (h *Handler) handleResumeRealtimeSignal(w http.ResponseWriter, r *http.Request, id string) {
+	session, err := h.signalMgr.ResumeSession(r.Context(), id)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
 
@@ -109,57 +112,50 @@ func (h *Handler) HandleResumeRealtimeSignal(w http.ResponseWriter, r *http.Requ
 
 // HandleListRealtimeSignals GET /api/realtime-signals
 func (h *Handler) HandleListRealtimeSignals(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !allowMethod(w, r, http.MethodGet) {
 		return
 	}
 
 	sessions, err := h.db.GetSessionsByType("REALTIME_SIGNAL")
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	// Display-only overlay: the DB is kept in sync by the signal manager
+	// (StopSession, bot exit, RecoverStaleSessions), so GET never writes.
 	for _, sess := range sessions {
-		h.signalMgr.mu.Lock()
-		if _, ok := h.signalMgr.bots[sess.ID]; ok {
+		if h.signalMgr.IsRunning(sess.ID) {
 			sess.Status = "running"
 		} else if sess.Status == "running" {
 			sess.Status = "stopped"
-			h.db.UpdateSession(sess)
 		}
-		h.signalMgr.mu.Unlock()
+	}
+
+	prices := h.sessionPrices(r.Context(), sessions...)
+	for _, sess := range sessions {
+		price, ok := prices[sess.Pair]
+		sess.Stats = computeSessionStats(sess, h.sessionBalances(sess), price, ok)
+		fillStrategyParams(sess)
+		// Orders are only loaded for the stats; the list stays lightweight.
+		sess.Orders = nil
 	}
 
 	writeJSON(w, http.StatusOK, sessions)
 }
 
-func (h *Handler) HandleSessionChart(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) < 3 {
-		http.Error(w, "invalid path", http.StatusBadRequest)
-		return
-	}
-	id := parts[2]
-
-	chart, err := h.signalMgr.GetSessionChart(r.Context(), id)
+// handleSessionChart GET /api/realtime-signals/:id/chart
+func (h *Handler) handleSessionChart(w http.ResponseWriter, r *http.Request, id string) {
+	chart, session, err := h.signalMgr.GetSessionChart(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
-
-	session, err := h.signalMgr.db.GetSessionByID(id)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-type", "application/json")
 
 	asset, quote := exchange.SplitAssetQuote(session.Pair)
 	assetValues, equityValues := chart.EquityValuesByPair(session.Pair)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"candles":       chart.CandlesByPair(session.Pair),
 		"indicators":    chart.IndicatorsByPair(session.Pair),
 		"shapes":        chart.ShapesByPair(session.Pair),
@@ -171,51 +167,62 @@ func (h *Handler) HandleSessionChart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleGetRealtimeSignal GET /api/realtime-signals/:id
-func (h *Handler) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	pathParts := strings.Split(r.URL.Path, "/")
-	if len(pathParts) < 4 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid path"})
-		return
-	}
-	sessionID := pathParts[3]
-
-	session, err := h.db.GetSessionByID(sessionID)
+// handleGetRealtimeSignal GET /api/realtime-signals/:id
+func (h *Handler) handleGetRealtimeSignal(w http.ResponseWriter, r *http.Request, id string) {
+	session, err := h.db.GetSessionByID(id)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+		writeError(w, errorStatus(err), err.Error())
 		return
 	}
 
-	h.signalMgr.mu.Lock()
-	if _, ok := h.signalMgr.bots[sessionID]; ok {
+	if h.signalMgr.IsRunning(id) {
 		session.Status = "running"
+	} else if session.Status == "running" {
+		session.Status = "stopped"
 	}
-	h.signalMgr.mu.Unlock()
 
-	if session.Status == "running" {
-		balances, err := h.signalMgr.GetSessionBalances(sessionID)
-		if err == nil {
-			session.Balances = balances
-		}
-	} else {
-		balancesMap := CalculateBalancesFromOrders(session)
-
-		for asset, amount := range balancesMap {
-			if amount > 0.00000001 {
-				session.Balances = append(session.Balances, model.Balance{
-					Asset: asset,
-					Free:  amount,
-					Lock:  0,
-				})
-			}
-		}
-	}
+	session.Balances = h.sessionBalances(session)
+	price, ok := h.sessionPrices(r.Context(), session)[session.Pair]
+	session.Stats = computeSessionStats(session, session.Balances, price, ok)
 	session.Events = sessionEventsForDisplay(session)
+	fillStrategyParams(session)
 
 	writeJSON(w, http.StatusOK, session)
+}
+
+// normalizeStartRequest trims and validates a start request and fills the
+// strategy defaults, mirroring the backtest validation.
+func normalizeStartRequest(req *StartSignalRequest) error {
+	req.Pair = strings.ToUpper(strings.TrimSpace(req.Pair))
+	req.Timeframe = strings.TrimSpace(req.Timeframe)
+	req.Strategy = strings.TrimSpace(req.Strategy)
+	req.InitialAsset = strings.ToUpper(strings.TrimSpace(req.InitialAsset))
+
+	if req.Pair == "" || req.Timeframe == "" || req.Strategy == "" || req.InitialAsset == "" || req.InitialAmount <= 0 {
+		return errors.New("missing required fields")
+	}
+	if asset, _ := exchange.SplitAssetQuote(req.Pair); asset == "" {
+		return fmt.Errorf("unsupported pair %q", req.Pair)
+	}
+	if _, ok := timeframeDuration(req.Timeframe); !ok {
+		return fmt.Errorf("invalid timeframe %q", req.Timeframe)
+	}
+	if !slices.Contains(registry.Registered(), req.Strategy) {
+		return fmt.Errorf("unknown strategy %q", req.Strategy)
+	}
+
+	if req.Strategy != "emacross" {
+		req.FastPeriod, req.SlowPeriod = 0, 0
+		return nil
+	}
+	if req.FastPeriod <= 0 {
+		req.FastPeriod = 8
+	}
+	if req.SlowPeriod <= 0 {
+		req.SlowPeriod = 21
+	}
+	if req.FastPeriod >= req.SlowPeriod {
+		return errors.New("fast_period must be less than slow_period")
+	}
+	return nil
 }

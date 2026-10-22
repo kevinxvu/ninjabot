@@ -25,6 +25,7 @@ func (h *Handler) HandleMarketWebsocket(w http.ResponseWriter, r *http.Request) 
 
 	if h.wsManager == nil {
 		log.Println("WS Manager not initialised")
+		conn.Close()
 		return
 	}
 

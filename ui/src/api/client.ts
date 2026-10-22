@@ -1,21 +1,28 @@
-import axios from 'axios';
-import type { AxiosResponse } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 
-const api = axios.create({
+const http = axios.create({
   baseURL: '/',
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Add a response interceptor to automatically extract data
-api.interceptors.response.use(
-  (response: AxiosResponse) => response.data,
-  (error) => {
-    console.error('API Error:', error.response?.data || error.message);
-    return Promise.reject(error);
-  }
-);
+/** Thin typed wrapper that returns the response body directly. */
+export const api = {
+  get: <T>(url: string, config?: AxiosRequestConfig) => http.get<T>(url, config).then((res) => res.data),
+  post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
+    http.post<T>(url, body, config).then((res) => res.data),
+  delete: <T>(url: string, config?: AxiosRequestConfig) =>
+    http.delete<T>(url, config).then((res) => res.data),
+};
 
-export default api;
+/** Extracts a human readable message from an API/axios error. */
+export function getErrorMessage(error: unknown, fallback = 'Something went wrong') {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { error?: string } | string | undefined;
+    if (typeof data === 'string' && data.trim()) return data.trim();
+    if (data && typeof data === 'object' && data.error) return data.error;
+    return error.message || fallback;
+  }
+  if (error instanceof Error) return error.message;
+  return fallback;
+}

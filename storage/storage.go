@@ -1,10 +1,14 @@
 package storage
 
 import (
+	"errors"
 	"time"
 
 	"github.com/rodrigo-brito/ninjabot/model"
 )
+
+// ErrNotFound is returned when a requested record does not exist.
+var ErrNotFound = errors.New("not found")
 
 type OrderFilter func(model.Order) bool
 

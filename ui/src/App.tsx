@@ -1,36 +1,34 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { SetupBacktest } from './pages/SetupBacktest';
-import { BacktestDashboard } from './pages/BacktestDashboard';
-import { Dashboard } from './pages/Dashboard';
-import { SetupSignal } from './pages/SetupSignal';
-import { SignalDashboard } from './pages/SignalDashboard';
-import { SignalsList } from './pages/SignalsList';
-import './index.css';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { BacktestResultPage } from '@/features/backtesting/BacktestResultPage';
+import { BacktestSetupPage } from '@/features/backtesting/BacktestSetupPage';
+import { DashboardPage } from '@/features/dashboard/DashboardPage';
+import { SignalDetailPage } from '@/features/signals/SignalDetailPage';
+import { SignalListPage } from '@/features/signals/SignalListPage';
+import { SignalSetupPage } from '@/features/signals/SignalSetupPage';
 
-function App() {
+export function App() {
   return (
     <HashRouter>
       <Routes>
-        {/* Set Dashboard as the default route */}
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/backtesting" element={<SetupBacktest />} />
-        <Route path="/backtesting/dashboard" element={<BacktestDashboard />} />
-        
-        {/* Realtime Signals Routes */}
-        <Route path="/realtime-signals" element={<SignalsList />} />
-        <Route path="/realtime-signals/setup" element={<SetupSignal />} />
-        <Route path="/realtime-signals/:id" element={<SignalDashboard />} />
+        <Route element={<AppLayout />}>
+          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
 
-        {/* Redirect root to dashboard */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        
-        {/* Placeholder routes for the sidebar menu items */}
-        <Route path="/futuremarket" element={<Dashboard />} />
-        <Route path="/paperwallet" element={<SignalsList />} />
-        <Route path="/spotmarket" element={<Dashboard />} />
+          <Route path="backtesting">
+            <Route index element={<BacktestSetupPage />} />
+            <Route path="dashboard" element={<BacktestResultPage />} />
+          </Route>
+
+          <Route path="realtime-signals">
+            <Route index element={<SignalListPage />} />
+            <Route path="setup" element={<SignalSetupPage />} />
+            <Route path=":id" element={<SignalDetailPage />} />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
       </Routes>
     </HashRouter>
   );
 }
-
-export default App;

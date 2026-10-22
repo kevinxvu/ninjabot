@@ -3,55 +3,56 @@ package handler
 import (
 	"bytes"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 
+// drawdown is the max drawdown window; Value is a non-positive percentage
+// (-12.5 = -12.5%), matching summaryStat.MaxDrawdownPct.
 type drawdown struct {
 	Start time.Time `json:"start"`
 	End   time.Time `json:"end"`
-	Value string    `json:"value"`
+	Value float64   `json:"value"`
 }
 
+// HandleHealth answers 503 when the chart has not received a candle for over
+// an hour (the status must be written before the body, or it is ignored).
 func (h *Handler) HandleHealth(w http.ResponseWriter, _ *http.Request) {
-	if time.Since(h.chart.LastUpdate()) > time.Hour+10*time.Minute {
-		_, err := w.Write([]byte(h.chart.LastUpdate().String()))
-		if err != nil {
-			log.Error(err)
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+	lastUpdate := h.chart.LastUpdate()
+	if time.Since(lastUpdate) > time.Hour+10*time.Minute {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"status": "stale", "last_update": lastUpdate})
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "last_update": lastUpdate})
 }
 
 func (h *Handler) HandleChartData(w http.ResponseWriter, r *http.Request) {
-	pair := r.URL.Query().Get("pair")
+	pair := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("pair")))
 	if pair == "" {
-		w.WriteHeader(http.StatusNotFound)
+		writeError(w, http.StatusBadRequest, "pair is required")
 		return
 	}
 
-	w.Header().Set("Content-type", "text/json")
-
 	var maxDrawdown *drawdown
-	if h.chart.PaperWallet() != nil {
-		value, start, end := h.chart.PaperWallet().MaxDrawdown()
-		maxDrawdown = &drawdown{
-			Start: start,
-			End:   end,
-			Value: fmt.Sprintf("%.1f", value*100),
+	if wallet := h.chart.PaperWallet(); wallet != nil {
+		if value, start, end := wallet.MaxDrawdown(); value < 0 {
+			maxDrawdown = &drawdown{
+				Start: start,
+				End:   end,
+				Value: math.Round(value*10000) / 100,
+			}
 		}
 	}
 
 	asset, quote := exchange.SplitAssetQuote(pair)
 	assetValues, equityValues := h.chart.EquityValuesByPair(pair)
-	err := json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"candles":       h.chart.CandlesByPair(pair),
 		"indicators":    h.chart.IndicatorsByPair(pair),
 		"shapes":        h.chart.ShapesByPair(pair),
@@ -61,47 +62,31 @@ func (h *Handler) HandleChartData(w http.ResponseWriter, r *http.Request) {
 		"asset":         asset,
 		"max_drawdown":  maxDrawdown,
 	})
-	if err != nil {
-		log.Error(err)
-	}
 }
 
 func (h *Handler) HandleTradingHistoryData(w http.ResponseWriter, r *http.Request) {
-	pair := r.URL.Query().Get("pair")
+	pair := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("pair")))
 	if pair == "" {
-		w.WriteHeader(http.StatusNotFound)
+		writeError(w, http.StatusBadRequest, "pair is required")
 		return
 	}
-
-	w.Header().Set("Content-type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment;filename=history_"+pair+".csv")
-	w.Header().Set("Transfer-Encoding", "chunked")
-
-	orders := h.chart.OrderStringByPair(pair)
 
 	buffer := bytes.NewBuffer(nil)
 	csvWriter := csv.NewWriter(buffer)
-	err := csvWriter.Write([]string{"created_at", "status", "side", "id", "type", "quantity", "price", "total", "profit"})
-	if err != nil {
-		log.Errorf("failed writing header file: %s", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
+	if err := csvWriter.Write([]string{"created_at", "status", "side", "id", "type", "quantity", "price", "total", "profit"}); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("write csv header: %v", err))
+		return
+	}
+	if err := csvWriter.WriteAll(h.chart.OrderStringByPair(pair)); err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("write csv rows: %v", err))
 		return
 	}
 
-	err = csvWriter.WriteAll(orders)
-	if err != nil {
-		log.Errorf("failed writing data: %s", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	csvWriter.Flush()
-
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "history_"+pair+".csv"))
 	w.WriteHeader(http.StatusOK)
-	_, err = w.Write(buffer.Bytes())
-	if err != nil {
-		log.Errorf("failed writing response: %s", err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if _, err := w.Write(buffer.Bytes()); err != nil {
+		log.Errorf("write history csv: %v", err)
 	}
 }
 
@@ -113,7 +98,7 @@ func (h *Handler) HandleSummary(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 
 	if data == nil {
-		http.NotFound(w, r)
+		writeError(w, http.StatusNotFound, "no backtest result available")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

@@ -1,6 +1,8 @@
 package sqlite
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/samber/lo"
@@ -90,10 +92,10 @@ func (s *SQL) UpdateSession(session *model.Session) error {
 	return s.db.Save(session).Error
 }
 
-// GetSessionsByType returns all sessions of a specific type
+// GetSessionsByType returns all sessions of a specific type with their orders.
 func (s *SQL) GetSessionsByType(sessionType string) ([]*model.Session, error) {
 	var sessions []*model.Session
-	err := s.db.Where("type = ?", sessionType).Order("created_at desc").Find(&sessions).Error
+	err := s.db.Preload("Orders").Where("type = ?", sessionType).Order("created_at desc").Find(&sessions).Error
 	return sessions, err
 }
 
@@ -103,6 +105,9 @@ func (s *SQL) GetSessionByID(id string) (*model.Session, error) {
 	err := s.db.Preload("Orders").Preload("Events", func(db *gorm.DB) *gorm.DB {
 		return db.Order("created_at asc")
 	}).Where("id = ?", id).First(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("session %s: %w", id, storage.ErrNotFound)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +121,14 @@ func (s *SQL) DeleteSession(id string) error {
 	if err := s.db.Where("session_id = ?", id).Delete(&model.Order{}).Error; err != nil {
 		return err
 	}
-	return s.db.Where("id = ?", id).Delete(&model.Session{}).Error
+	result := s.db.Where("id = ?", id).Delete(&model.Session{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("session %s: %w", id, storage.ErrNotFound)
+	}
+	return nil
 }
 
 func (s *SQL) CreateSessionEvent(event *model.SessionEvent) error {

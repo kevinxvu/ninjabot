@@ -568,7 +568,7 @@ func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest
 func (m *SignalManager) ResumeSession(ctx context.Context, sessionID string) (*model.Session, error) {
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("get session %s: %w", sessionID, err)
+		return nil, err
 	}
 
 	botCtx, cancel, err := m.reserve(sessionID)
@@ -619,7 +619,7 @@ func (m *SignalManager) StopSession(sessionID string) error {
 
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
-		return fmt.Errorf("get session %s: %w", sessionID, err)
+		return err
 	}
 	if session.Status != "running" && !running && !starting {
 		return nil
@@ -655,7 +655,7 @@ func (m *SignalManager) GetSessionBalances(sessionID string) ([]model.Balance, e
 func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (*plot.Chart, *model.Session, error) {
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("get session %s: %w", sessionID, err)
+		return nil, nil, err
 	}
 
 	currentStrategy := buildSessionStrategy(session)

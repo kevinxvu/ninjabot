@@ -1,4 +1,4 @@
-import { Activity, LayoutDashboard, Settings, Zap, type LucideIcon } from 'lucide-react';
+import { Activity, BookOpen, LayoutDashboard, Settings, Zap, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   label: string;
@@ -10,5 +10,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { label: 'Backtesting', path: '/backtesting', icon: Activity },
   { label: 'Realtime Signals', path: '/realtime-signals', icon: Zap },
+  { label: 'Strategy Guide', path: '/strategies', icon: BookOpen },
   { label: 'Settings', path: '/settings', icon: Settings },
 ];

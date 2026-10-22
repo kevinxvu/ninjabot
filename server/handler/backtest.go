@@ -149,21 +149,6 @@ func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []
 	start := time.Now().AddDate(0, 0, -req.Days)
 	end := time.Now()
 
-	pairFeeds := make([]exfeed.PairFeed, 0, len(pairs))
-	for _, pair := range pairs {
-		csvFile := fmt.Sprintf("%s/%s.csv", tmpDir, pair)
-		if err := downloader.Download(ctx, pair, req.Timeframe, csvFile,
-			download.WithInterval(start, end),
-		); err != nil {
-			return fmt.Errorf("download %s: %w", pair, err)
-		}
-		pairFeeds = append(pairFeeds, exfeed.PairFeed{
-			Pair:      pair,
-			File:      csvFile,
-			Timeframe: req.Timeframe,
-		})
-	}
-
 	var strat strategy.Strategy
 	switch req.Strategy {
 	case "ocosell":
@@ -176,6 +161,22 @@ func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []
 		strat = strategies.NewDCA(req.Timeframe, req.DCAInterval, req.DCABuyAmount)
 	default:
 		strat = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
+	}
+
+	sourceTimeframe := backtestSourceTimeframe(strat, req.Timeframe)
+	pairFeeds := make([]exfeed.PairFeed, 0, len(pairs))
+	for _, pair := range pairs {
+		csvFile := fmt.Sprintf("%s/%s.csv", tmpDir, pair)
+		if err := downloader.Download(ctx, pair, sourceTimeframe, csvFile,
+			download.WithInterval(start, end),
+		); err != nil {
+			return fmt.Errorf("download %s: %w", pair, err)
+		}
+		pairFeeds = append(pairFeeds, exfeed.PairFeed{
+			Pair:      pair,
+			File:      csvFile,
+			Timeframe: sourceTimeframe,
+		})
 	}
 
 	csvFeed, err := exfeed.NewCSVFeed(strat.Timeframe(), pairFeeds...)
@@ -234,6 +235,20 @@ func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []
 	h.mu.Unlock()
 
 	return nil
+}
+
+// backtestSourceTimeframe returns the candle interval to download for strat.
+// A HighFrequencyStrategy (e.g. the trailing stop) acts on partial candles,
+// which only exist when the CSV feed resamples finer data, so it gets hourly
+// candles that the feed groups into the strategy timeframe.
+func backtestSourceTimeframe(strat strategy.Strategy, timeframe string) string {
+	if _, ok := strat.(strategy.HighFrequencyStrategy); !ok {
+		return timeframe
+	}
+	if d, ok := timeframeDuration(timeframe); ok && d > time.Hour {
+		return "1h"
+	}
+	return timeframe
 }
 
 // computeHistogram divides returns (as fractions, e.g. 0.032 = 3.2%) into

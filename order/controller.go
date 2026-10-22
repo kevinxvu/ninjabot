@@ -459,6 +459,14 @@ func (c *Controller) updateOrders() {
 	c.mtx.Unlock()
 }
 
+// UpdateOrders processes the status changes of pending orders right away.
+// Backtests call it after every candle: the ticker started by Start runs on
+// wall-clock time, so it would see fills long after (or all at the end of) a
+// simulated run and attribute them to the wrong position.
+func (c *Controller) UpdateOrders() {
+	c.updateOrders()
+}
+
 func (c *Controller) Status() Status {
 	return c.status
 }

@@ -335,7 +335,13 @@ func (n *NinjaBot) backtestCandles() {
 
 		candle := item.(model.Candle)
 		if n.paperWallet != nil {
+			// Settle fills of this candle before the strategy reacts to it,
+			// so positions and realized profits follow simulated time.
+			pending := n.paperWallet.HasPendingOrders()
 			n.paperWallet.OnCandle(candle)
+			if pending {
+				n.orderController.UpdateOrders()
+			}
 		}
 
 		n.strategiesControllers[candle.Pair].OnPartialCandle(candle)
@@ -392,8 +398,12 @@ func (n *NinjaBot) Run(ctx context.Context) error {
 
 	// start order feed and controller
 	n.orderFeed.Start()
-	n.orderController.Start()
-	defer n.orderController.Stop()
+	// Backtests settle orders per candle in backtestCandles instead of on the
+	// wall-clock ticker.
+	if !n.backtest {
+		n.orderController.Start()
+		defer n.orderController.Stop()
+	}
 	if n.telegram != nil {
 		n.telegram.Start()
 	}

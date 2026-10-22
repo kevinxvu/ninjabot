@@ -147,7 +147,11 @@ JSON casing differs by source. `plot` candles use lowercase keys (`time`, `open`
 3. Resets the **shared** `plot.Chart` (`Reset`, `SetStrategy`, `SetPaperWallet`).
 4. Runs `ninjabot.NewBot(... WithBacktest ...)` and stores `computeSummary` output for `/api/summary`.
 
-The backtest strategy is picked with a `switch` in `runBacktest`, not via `internal/registry`. A new backtest strategy must be added there **and** to `ui/src/components/strategy/strategies.ts`.
+The backtest strategy is picked with a `switch` in `runBacktest`, not via `internal/registry`. A new backtest strategy must be added there **and** to `ui/src/components/strategy/strategies.ts` (its entry/exit/sizing texts feed the setup tooltip and the Strategy Guide page, so keep them in sync with the Go rules), with a scenario test in `strategy/strategies/strategies_test.go`.
+
+Two backtest details matter for correctness:
+- A `HighFrequencyStrategy` (the trailing stop) acts in `OnPartialCandle`, which only fires on resampled data, so `backtestSourceTimeframe` downloads 1h candles and `CSVFeed` groups them into the strategy timeframe.
+- In backtest mode the order controller's wall-clock ticker is not started; `backtestCandles` calls `Controller.UpdateOrders()` after each candle that had pending orders, so limit/OCO fills are settled in simulated time.
 
 Because the chart and summary are global server state, only the latest backtest is viewable.
 
@@ -181,7 +185,7 @@ Stack: React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (Radix primiti
 
 ```
 ui/src/
-  App.tsx                 Routes: /dashboard, /backtesting, /backtesting/dashboard?pair=, /realtime-signals, /realtime-signals/setup, /realtime-signals/:id, /settings
+  App.tsx                 Routes: /dashboard, /backtesting[?strategy=], /backtesting/dashboard?pair=, /realtime-signals, /realtime-signals/setup, /realtime-signals/:id, /strategies[?s=], /settings
   index.css               Design tokens (:root/.dark) mapped to Tailwind via @theme inline; `label-style` utility
   api/                    client.ts (axios wrapper returning body, getErrorMessage), market.ts, backtest.ts, signals.ts, types.ts
   hooks/                  useAsync (fetch with stale-response guard, reload, mutate), useMarketSocket, useTradingPairs (shared cache), useLocalStorageState
@@ -195,6 +199,7 @@ ui/src/
   features/dashboard/     DashboardPage + TickerCard, MarketChartCard, PortfolioCard
   features/backtesting/   BacktestSetupPage, BacktestResultPage, stats.ts, StatsGrid, PerformanceChart, TradesTable, BacktestSummary
   features/signals/       SignalListPage, SignalSetupPage, SignalDetailPage, useSessionActions, SessionCard, SessionMeta, SignalHistory, TelegramAlertToggle
+  features/strategies/    StrategyGuidePage (how each strategy trades, when to use it; data from strategies.ts)
   features/settings/      TelegramSettingsPage (bot token, chat ID, notification options, test message)
   types/plotly.d.ts       Module declarations for plotly.js-dist-min and react-plotly.js/factory
 ```

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, Play, Settings2 } from 'lucide-react';
 import { backtestApi } from '@/api/backtest';
 import { getErrorMessage } from '@/api/client';
@@ -34,14 +34,22 @@ const DEFAULT_CONFIG: BacktestRequest = {
   dca_buy_amount: 100,
 };
 
-/** Restores the last submitted configuration. */
-function loadConfig(): BacktestRequest {
-  return { ...DEFAULT_CONFIG, ...readJsonStorage<Partial<BacktestRequest>>(CONFIG_STORAGE_KEY) };
+/** Restores the last submitted configuration; `strategy` (from the guide's links) overrides the saved one. */
+function loadConfig(strategy: string | null): BacktestRequest {
+  const config = { ...DEFAULT_CONFIG, ...readJsonStorage<Partial<BacktestRequest>>(CONFIG_STORAGE_KEY) };
+  const requested = strategy ? getStrategy(strategy) : undefined;
+  if (!requested) return config;
+  return {
+    ...config,
+    strategy: requested.value,
+    ...(requested.fixedTimeframe ? { timeframe: requested.fixedTimeframe } : {}),
+  };
 }
 
 export function BacktestSetupPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState(loadConfig);
+  const [searchParams] = useSearchParams();
+  const [form, setForm] = useState(() => loadConfig(searchParams.get('strategy')));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

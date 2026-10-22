@@ -109,7 +109,12 @@ export function buildPriceFigure(input: PriceFigureInput) {
   const { candles, currentPrice, subIndicators } = input;
   const times = candles.map((candle) => formatPlotlyLocalDate(candle.time));
   const orders = orderAnnotations(candles);
-  const events = sessionEventMarks(input.events ?? []);
+  // The backend only returns recent history for long sessions; drop older marks so
+  // they don't stretch the x-axis far beyond the candles.
+  const firstMs = candles.length ? toEpochMs(candles[0].time) : Number.NEGATIVE_INFINITY;
+  const events = sessionEventMarks(
+    (input.events ?? []).filter((event) => toEpochMs(event.created_at) >= firstMs),
+  );
 
   const traces: Partial<Data>[] = [
     {
@@ -187,18 +192,20 @@ export function buildPriceFigure(input: PriceFigureInput) {
   }
 
   const shapes: Partial<Shape>[] = [
-    ...(input.shapes ?? []).map((s): Partial<Shape> => ({
-      type: 'rect',
-      xref: 'x',
-      yref: 'y',
-      x0: formatPlotlyLocalDate(s.x0),
-      x1: formatPlotlyLocalDate(s.x1),
-      y0: s.y0,
-      y1: s.y1,
-      line: { width: 0 },
-      fillcolor: s.color,
-      layer: 'below',
-    })),
+    ...(input.shapes ?? [])
+      .filter((s) => toEpochMs(s.x1) >= firstMs)
+      .map((s): Partial<Shape> => ({
+        type: 'rect',
+        xref: 'x',
+        yref: 'y',
+        x0: formatPlotlyLocalDate(s.x0),
+        x1: formatPlotlyLocalDate(s.x1),
+        y0: s.y0,
+        y1: s.y1,
+        line: { width: 0 },
+        fillcolor: s.color,
+        layer: 'below',
+      })),
     ...events.shapes,
   ];
   const annotations: Partial<Annotations>[] = [...orders.annotations, ...events.annotations];

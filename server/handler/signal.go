@@ -136,6 +136,7 @@ func (h *Handler) HandleListRealtimeSignals(w http.ResponseWriter, r *http.Reque
 	for _, sess := range sessions {
 		price, ok := prices[sess.Pair]
 		sess.Stats = computeSessionStats(sess, h.sessionBalances(sess), price, ok)
+		fillStrategyParams(sess)
 		// Orders are only loaded for the stats; the list stays lightweight.
 		sess.Orders = nil
 	}
@@ -184,6 +185,7 @@ func (h *Handler) handleGetRealtimeSignal(w http.ResponseWriter, r *http.Request
 	price, ok := h.sessionPrices(r.Context(), session)[session.Pair]
 	session.Stats = computeSessionStats(session, session.Balances, price, ok)
 	session.Events = sessionEventsForDisplay(session)
+	fillStrategyParams(session)
 
 	writeJSON(w, http.StatusOK, session)
 }

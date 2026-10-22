@@ -20,7 +20,7 @@ import (
 	serverws "github.com/rodrigo-brito/ninjabot/server/ws"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
-	_ "github.com/rodrigo-brito/ninjabot/strategy/strategies" // registers built-in strategies
+	"github.com/rodrigo-brito/ninjabot/strategy/strategies" // also registers built-in strategies
 	"github.com/rodrigo-brito/ninjabot/tools/log"
 )
 
@@ -725,6 +725,15 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 	}
 
 	return chart, session, nil
+}
+
+// fillStrategyParams sets the strategy parameters the session actually runs
+// with, so sessions stored without periods (older builds) show the defaults.
+func fillStrategyParams(session *model.Session) {
+	if s, ok := buildSessionStrategy(session).(*strategies.CrossEMA); ok {
+		session.FastPeriod = s.FastPeriod
+		session.SlowPeriod = s.SlowPeriod
+	}
 }
 
 // buildSessionStrategy constructs the session's Strategy using the global

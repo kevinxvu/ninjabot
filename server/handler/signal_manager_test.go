@@ -68,6 +68,27 @@ func TestBuildSessionStrategyUsesStoredPeriods(t *testing.T) {
 	require.Equal(t, 50, s.SlowPeriod)
 }
 
+func TestFillStrategyParams(t *testing.T) {
+	tt := []struct {
+		name       string
+		session    model.Session
+		fast, slow int
+	}{
+		{"stored periods", model.Session{Strategy: "emacross", Timeframe: "1m", FastPeriod: 5, SlowPeriod: 13}, 5, 13},
+		{"older session uses defaults", model.Session{Strategy: "emacross", Timeframe: "1m"}, 8, 21},
+		{"other strategy untouched", model.Session{Strategy: "turtle", Timeframe: "4h"}, 0, 0},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			fillStrategyParams(&tc.session)
+
+			require.Equal(t, tc.fast, tc.session.FastPeriod)
+			require.Equal(t, tc.slow, tc.session.SlowPeriod)
+		})
+	}
+}
+
 func TestNormalizeStartRequest(t *testing.T) {
 	valid := StartSignalRequest{Pair: " btcusdt ", Timeframe: "1h", Strategy: "emacross", InitialAsset: "usdt", InitialAmount: 100}
 

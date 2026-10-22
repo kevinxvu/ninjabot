@@ -650,10 +650,12 @@ func (m *SignalManager) GetSessionBalances(sessionID string) ([]model.Balance, e
 	return acc.Balances, nil
 }
 
-func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (*plot.Chart, error) {
+// GetSessionChart rebuilds the chart of a session and returns it with the
+// session it was built from.
+func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (*plot.Chart, *model.Session, error) {
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("get session %s: %w", sessionID, err)
+		return nil, nil, fmt.Errorf("get session %s: %w", sessionID, err)
 	}
 
 	currentStrategy := buildSessionStrategy(session)
@@ -673,7 +675,7 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 
 	chart, err := plot.NewChart(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create chart: %w", err)
+		return nil, nil, fmt.Errorf("failed to create chart: %w", err)
 	}
 
 	// Always fetch candles fresh from the exchange so any gaps caused by missed
@@ -690,7 +692,7 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 			if len(instance.Chart.CandlesByPair(session.Pair)) == 0 {
 				m.hydrateRecentChartCandles(ctx, instance.Chart, session.Pair, session.Timeframe, currentStrategy)
 			}
-			return instance.Chart, nil
+			return instance.Chart, session, nil
 		}
 		if fetchErr != nil {
 			log.Errorf("Failed to fetch session candles for chart: %v", fetchErr)
@@ -702,7 +704,7 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 		chart.OnOrder(o)
 	}
 
-	return chart, nil
+	return chart, session, nil
 }
 
 // buildSessionStrategy constructs the session's Strategy using the global

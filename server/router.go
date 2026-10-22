@@ -34,24 +34,8 @@ func SetupRouter(h *serverhandler.Handler) *http.ServeMux {
 	// Realtime Signals API
 	mux.HandleFunc("/api/realtime-signals", serverhandler.Middleware(h.HandleListRealtimeSignals))
 	mux.HandleFunc("/api/realtime-signals/start", serverhandler.Middleware(h.HandleStartRealtimeSignal))
-	// Dynamic routes
-	mux.HandleFunc("/api/realtime-signals/", serverhandler.Middleware(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if r.Method == http.MethodDelete {
-			h.HandleDeleteRealtimeSignal(w, r)
-			return
-		}
-
-		if strings.HasSuffix(path, "/stop") {
-			h.HandleStopRealtimeSignal(w, r)
-		} else if strings.HasSuffix(path, "/resume") {
-			h.HandleResumeRealtimeSignal(w, r)
-		} else if strings.HasSuffix(path, "/chart") {
-			h.HandleSessionChart(w, r)
-		} else {
-			h.HandleGetRealtimeSignal(w, r)
-		}
-	}))
+	mux.HandleFunc("/api/realtime-signals/", serverhandler.Middleware(h.HandleRealtimeSignal))
+	mux.HandleFunc("/api/", serverhandler.Middleware(h.HandleNotFound))
 
 	mux.HandleFunc("/ws/market", serverhandler.Middleware(h.HandleMarketWebsocket))
 

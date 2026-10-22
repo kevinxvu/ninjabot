@@ -80,6 +80,5 @@ type assetBalance struct {
 // PortfolioResponse is the response body for GET /api/market/portfolio.
 type PortfolioResponse struct {
 	TotalValueUSDT float64        `json:"total_value_usdt"`
-	Assets         []assetBalance `json:"assets,omitempty"`
-	Error          string         `json:"error,omitempty"`
+	Assets         []assetBalance `json:"assets"`
 }

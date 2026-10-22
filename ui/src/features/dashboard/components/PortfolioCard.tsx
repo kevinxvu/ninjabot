@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/api/client';
 import type { Portfolio } from '@/api/types';
 import { CoinIcon } from '@/components/common/CoinIcon';
 import { SectionCard } from '@/components/common/SectionCard';
@@ -7,11 +8,12 @@ import { formatUsd } from '@/lib/format';
 interface PortfolioCardProps {
   portfolio?: Portfolio;
   loading: boolean;
+  error?: unknown;
 }
 
 /** Binance account value in USDT and its per-asset breakdown. */
-export function PortfolioCard({ portfolio, loading }: PortfolioCardProps) {
-  const hasValue = portfolio && !portfolio.error;
+export function PortfolioCard({ portfolio, loading, error }: PortfolioCardProps) {
+  const hasValue = portfolio && !error;
   const assets = hasValue ? [...(portfolio.assets ?? [])].sort((a, b) => b.value_usdt - a.value_usdt) : [];
 
   return (
@@ -24,8 +26,8 @@ export function PortfolioCard({ portfolio, loading }: PortfolioCardProps) {
         </div>
       )}
 
-      {portfolio?.error && (
-        <p className="mt-2 text-xs text-muted-foreground" title={portfolio.error}>
+      {!!error && (
+        <p className="mt-2 text-xs text-muted-foreground" title={getErrorMessage(error)}>
           Balance unavailable — check the Binance API key configuration.
         </p>
       )}

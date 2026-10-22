@@ -60,15 +60,25 @@ func (h *Handler) HandleMarketTickers(w http.ResponseWriter, r *http.Request) {
 	pairs := strings.Split(pairsParam, ",")
 
 	results := make(map[string]float64)
+	var lastErr error
 	for _, pair := range pairs {
 		quote, err := h.exc.LastQuote(r.Context(), pair)
-		if err == nil {
-			results[pair] = quote
+		if err != nil {
+			log.Errorf("last quote %s: %v", pair, err)
+			lastErr = err
+			continue
 		}
+		results[pair] = quote
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	// Partial results are fine (the UI shows what it got); no price at all is
+	// an upstream failure.
+	if len(results) == 0 && lastErr != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch tickers: %v", lastErr))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, results)
 }
 
 func (h *Handler) HandleMarketCandles(w http.ResponseWriter, r *http.Request) {
@@ -88,20 +98,19 @@ func (h *Handler) HandleMarketCandles(w http.ResponseWriter, r *http.Request) {
 
 	candles, err := h.exc.CandlesByLimit(r.Context(), pair, timeframe, limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch candles: %v", err))
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(candles)
+	writeJSON(w, http.StatusOK, candles)
 }
 
+// HandleMarketPortfolio values the Binance account in USDT. It answers 503
+// when the account cannot be read (missing or invalid API key).
 func (h *Handler) HandleMarketPortfolio(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	acc, err := h.exc.Account()
 	if err != nil {
-		json.NewEncoder(w).Encode(PortfolioResponse{Error: err.Error()})
+		writeError(w, http.StatusServiceUnavailable, fmt.Sprintf("binance account unavailable: %v", err))
 		return
 	}
 
@@ -133,7 +142,7 @@ func (h *Handler) HandleMarketPortfolio(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	json.NewEncoder(w).Encode(PortfolioResponse{
+	writeJSON(w, http.StatusOK, PortfolioResponse{
 		TotalValueUSDT: totalUSDT,
 		Assets:         assets,
 	})

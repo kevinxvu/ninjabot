@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -68,6 +69,40 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// writeError writes a JSON error body ({"error": msg}) with the given status.
+// Every API error goes through it so the UI can rely on a single shape.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// errorStatus maps domain errors to HTTP status codes.
+func errorStatus(err error) int {
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, ErrSessionBusy):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+// allowMethod writes a 405 and returns false when r does not use method.
+func allowMethod(w http.ResponseWriter, r *http.Request, method string) bool {
+	if r.Method == method {
+		return true
+	}
+	w.Header().Set("Allow", method)
+	writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	return false
+}
+
+// HandleNotFound answers unknown /api/ paths with a JSON 404 instead of
+// falling through to the SPA index.html.
+func (h *Handler) HandleNotFound(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusNotFound, "not found")
+}
+
 // WithRecovery wraps an http.HandlerFunc with panic recovery.
 // Any panic is logged as an error and a 500 response is returned to the client.
 func WithRecovery(next http.HandlerFunc) http.HandlerFunc {
@@ -75,7 +110,7 @@ func WithRecovery(next http.HandlerFunc) http.HandlerFunc {
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Errorf("panic recovered [%s %s]: %v", r.Method, r.URL.Path, rec)
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				writeError(w, http.StatusInternalServerError, "internal server error")
 			}
 		}()
 		next(w, r)

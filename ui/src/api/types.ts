@@ -99,10 +99,10 @@ export interface AssetBalance {
   value_usdt: number;
 }
 
+/** GET /api/market/portfolio; the endpoint answers 503 when the Binance account is unavailable. */
 export interface Portfolio {
   total_value_usdt: number;
-  assets?: AssetBalance[];
-  error?: string;
+  assets: AssetBalance[] | null;
 }
 
 // ---- Backtest ----

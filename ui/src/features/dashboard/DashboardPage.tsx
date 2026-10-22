@@ -63,7 +63,7 @@ export function DashboardPage() {
           onTimeframeChange={setTimeframe}
         />
         <div className="space-y-6">
-          <PortfolioCard portfolio={portfolio.data} loading={portfolio.loading} />
+          <PortfolioCard portfolio={portfolio.data} loading={portfolio.loading} error={portfolio.error} />
         </div>
       </div>
     </>

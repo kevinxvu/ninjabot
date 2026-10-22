@@ -31,8 +31,7 @@ const backtestTimeout = 30 * time.Minute
 // HandleBacktest receives POST /api/backtest, downloads historical data,
 // runs the simulation, and returns the list of pairs to redirect to.
 func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	if !allowMethod(w, r, http.MethodPost) {
 		return
 	}
 

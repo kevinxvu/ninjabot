@@ -1,17 +1,14 @@
 import { Activity, Calendar, Clock, DollarSign } from 'lucide-react';
 import type { SignalSession } from '@/api/types';
 import { formatClientDateTime } from '@/lib/time';
+import { sessionStrategyLabel } from '../sessionLabels';
 
 /** Strategy / timeframe / capital / start time line plus wallet balances. */
 export function SessionMeta({ session }: { session: SignalSession }) {
-  const emaPeriods =
-    session.strategy === 'emacross' && session.fast_period && session.slow_period
-      ? ` (${session.fast_period}/${session.slow_period})`
-      : '';
   const items = [
     {
       icon: <Activity className="text-primary" />,
-      content: <strong>{`${session.strategy}${emaPeriods}`}</strong>,
+      content: <strong>{sessionStrategyLabel(session)}</strong>,
     },
     { icon: <Clock className="text-warning" />, content: <strong>{session.timeframe}</strong> },
     {

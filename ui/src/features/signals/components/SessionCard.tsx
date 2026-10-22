@@ -4,7 +4,8 @@ import type { SignalSession } from '@/api/types';
 import { KeyValueList } from '@/components/common/KeyValueList';
 import { SessionStatusBadge } from '@/components/common/StatusBadge';
 import { Button } from '@/components/ui/button';
-import { toClientDate } from '@/lib/time';
+import { formatClientDateTime } from '@/lib/time';
+import { sessionStrategyLabel, shortSessionId } from '../sessionLabels';
 
 interface SessionCardProps {
   session: SignalSession;
@@ -27,16 +28,22 @@ export function SessionCard({ session, pending, onStop, onResume, onDelete }: Se
       className="cursor-pointer rounded-xl border bg-card p-5 shadow-card transition-shadow outline-none hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
     >
       <div className="mb-4 flex items-start justify-between">
-        <div className="text-lg font-bold">{session.pair}</div>
+        <div>
+          <div className="text-lg font-bold">{session.pair}</div>
+          <div className="font-mono text-xs text-muted-foreground" title={session.id}>
+            {shortSessionId(session)}
+          </div>
+        </div>
         <SessionStatusBadge status={session.status} />
       </div>
 
       <KeyValueList
         className="mb-4 divide-y-0"
         items={[
-          { label: 'Strategy', value: `${session.strategy} (${session.timeframe})` },
+          { label: 'Strategy', value: `${sessionStrategyLabel(session)} · ${session.timeframe}` },
           { label: 'Initial Capital', value: `${session.initial_amount} ${session.initial_asset}` },
-          { label: 'Started', value: toClientDate(session.created_at)?.toLocaleDateString() ?? '-' },
+          { label: 'Started', value: formatClientDateTime(session.created_at) },
+          ...(running ? [] : [{ label: 'Stopped', value: formatClientDateTime(session.updated_at) }]),
         ]}
       />
 

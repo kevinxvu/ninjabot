@@ -671,11 +671,18 @@ func (m *SignalManager) GetSessionChart(ctx context.Context, sessionID string) (
 		return nil, nil, err
 	}
 
-	currentStrategy := buildSessionStrategy(session)
-
 	m.mu.Lock()
 	instance, exists := m.bots[sessionID]
 	m.mu.Unlock()
+
+	// A running bot keeps its own chart up to date from the live candle and order
+	// feeds, so serve it directly instead of re-downloading history from Binance on
+	// every refresh (the UI refreshes on each closed candle).
+	if exists && instance.Chart != nil && len(instance.Chart.CandlesByPair(session.Pair)) > 0 {
+		return instance.Chart, session, nil
+	}
+
+	currentStrategy := buildSessionStrategy(session)
 
 	// Build chart options. Carry over the paper wallet from the running instance
 	// so equity/asset values remain accurate even after a fresh candle rebuild.

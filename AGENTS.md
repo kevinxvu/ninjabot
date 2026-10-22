@@ -163,7 +163,7 @@ See `docs/backtest-flow.md` for a step-by-step walkthrough.
 - Start/resume reserve the session (`starting` map) and fetch chart candles without holding `SignalManager.mu`. `StopSession` persists the stopped state synchronously.
 - On resume, wallet balances are rebuilt from order history (`CalculateBalancesFromOrders`).
 - `RecoverStaleSessions` marks sessions left `running` after a crash as `stopped`. The STOP event uses the session's last `UpdatedAt`.
-- `GetSessionChart` rebuilds a fresh chart per request, limited to the last `maxRealtimeChartCandles` (3000) candles. `fetchSessionChartCandles` paginates Binance klines in 1000-candle windows. Keep that pattern for any long history fetch (Binance's hard limit is 1000 candles per request).
+- `GetSessionChart` serves the running bot's in-memory chart; for stopped sessions it rebuilds a fresh chart per request, limited to the last `maxRealtimeChartCandles` (3000) candles. `fetchSessionChartCandles` paginates Binance klines in 1000-candle windows. Keep that pattern for any long history fetch (Binance's hard limit is 1000 candles per request).
 - Orders are pushed to WS clients through `WsNotifier`.
 
 ### WebSocket caveat

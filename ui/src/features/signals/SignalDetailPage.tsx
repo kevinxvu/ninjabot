@@ -48,14 +48,15 @@ export function SignalDetailPage() {
         setCurrentPrice(message.price);
       } else if (message.type === 'CANDLE' && message.pair === pair) {
         setRealtimeCandle(message.data);
-        // Refetch only when a candle closes so backend indicators/orders stay authoritative.
-        if (message.data.Complete) refresh();
+        // Refetch the chart only when a candle closes so backend indicators stay authoritative;
+        // the session itself only changes when an order arrives.
+        if (message.data.Complete) reloadChart();
       } else if (message.type === 'ORDER' && message.session_id === id) {
         mutateSession((prev) => prev && { ...prev, orders: [message.data, ...(prev.orders ?? [])] });
         refresh();
       }
     },
-    [pair, id, refresh, mutateSession],
+    [pair, id, refresh, reloadChart, mutateSession],
   );
 
   // Stopped sessions don't need realtime price updates.

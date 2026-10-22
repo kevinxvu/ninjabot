@@ -185,7 +185,7 @@ ui/src/
   components/ui/          shadcn/ui primitives: generated, add more with `npx shadcn@latest add <name>` (from ui/)
   components/common/      StatCard, SectionCard, EmptyState, LoadingState, ErrorAlert, FormField, FormSection, MoneyInput, KeyValueList, ConfirmDialog, StatusBadge, CoinIcon, Spinner
   components/layout/      AppLayout (sidebar + <Outlet/>), Sidebar, navigation.ts (menu items), PageHeader
-  components/market/      PairSelect, PairMultiSelect, TimeframeSelect, timeframes.ts
+  components/market/      PairSelect, TimeframeSelect, timeframes.ts
   components/strategy/    strategies.ts (strategy catalogue: params, fixed timeframe, description), StrategyFields
   components/charts/      Plot (lazy Plotly wrapper), theme.ts (chart colors/layout), PriceChart + priceFigure.ts, LiveCandleChart, EquityChart
   features/dashboard/     DashboardPage + TickerCard, MarketChartCard, PortfolioCard

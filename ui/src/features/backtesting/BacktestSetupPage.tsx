@@ -10,7 +10,7 @@ import { FormSection } from '@/components/common/FormSection';
 import { MoneyInput } from '@/components/common/MoneyInput';
 import { Spinner } from '@/components/common/Spinner';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { PairMultiSelect } from '@/components/market/PairMultiSelect';
+import { PairSelect } from '@/components/market/PairSelect';
 import { TimeframeSelect } from '@/components/market/TimeframeSelect';
 import { StrategyFields, type StrategyValues } from '@/components/strategy/StrategyFields';
 import { getStrategy } from '@/components/strategy/strategies';
@@ -21,10 +21,9 @@ import { parsePairList } from '@/lib/pairs';
 import { readJsonStorage, writeStorage } from '@/lib/storage';
 
 const CONFIG_STORAGE_KEY = 'ninjabot_backtest_config';
-const MAX_PAIRS = 5;
 
 const DEFAULT_CONFIG: BacktestRequest = {
-  pairs: 'BTCUSDT,ETHUSDT',
+  pairs: 'BTCUSDT',
   timeframe: '1h',
   days: 60,
   initial_capital: 10000,
@@ -46,7 +45,8 @@ export function BacktestSetupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pairs = parsePairList(form.pairs);
+  // One pair per backtest; older saved configs may still hold a comma-separated list.
+  const pair = parsePairList(form.pairs)[0] ?? '';
   const fixedTimeframe = getStrategy(form.strategy)?.fixedTimeframe;
 
   const update = (patch: Partial<BacktestRequest>) => setForm((prev) => ({ ...prev, ...patch }));
@@ -58,18 +58,18 @@ export function BacktestSetupPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (pairs.length === 0) {
-      setError('Please select at least one trading pair.');
+    if (!pair) {
+      setError('Please select a trading pair.');
       return;
     }
 
     setSubmitting(true);
     setError(null);
     try {
-      const payload = { ...form, pairs: pairs.join(',') };
+      const payload = { ...form, pairs: pair };
       await backtestApi.run(payload);
       writeStorage(CONFIG_STORAGE_KEY, JSON.stringify(payload));
-      navigate(`/backtesting/dashboard?pair=${encodeURIComponent(pairs[0])}`);
+      navigate(`/backtesting/dashboard?pair=${encodeURIComponent(pair)}`);
     } catch (err) {
       setError(getErrorMessage(err, 'Backtest failed'));
     } finally {
@@ -90,23 +90,8 @@ export function BacktestSetupPage() {
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <FormSection icon={<Settings2 />} title="Environment">
-              <FormField
-                label={
-                  <>
-                    Trading Pairs{' '}
-                    <span className="tracking-normal text-muted-foreground/70 lowercase">
-                      (max {MAX_PAIRS})
-                    </span>
-                  </>
-                }
-                htmlFor="pairs"
-              >
-                <PairMultiSelect
-                  id="pairs"
-                  value={pairs}
-                  maxPairs={MAX_PAIRS}
-                  onChange={(next) => update({ pairs: next.join(',') })}
-                />
+              <FormField label="Trading Pair" htmlFor="pairs">
+                <PairSelect id="pairs" value={pair} onChange={(next) => update({ pairs: next })} />
               </FormField>
 
               <div className="grid grid-cols-2 gap-5">

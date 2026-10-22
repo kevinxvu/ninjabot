@@ -16,7 +16,9 @@ import { Button } from '@/components/ui/button';
 import { useAsync } from '@/hooks/useAsync';
 import { useMarketSocket } from '@/hooks/useMarketSocket';
 import { SessionMeta } from './components/SessionMeta';
+import { SessionStatsGrid } from './components/SessionStatsGrid';
 import { SignalHistory } from './components/SignalHistory';
+import { liveSessionStats } from './sessionStats';
 import { useSessionActions } from './useSessionActions';
 
 export function SignalDetailPage() {
@@ -83,6 +85,7 @@ export function SignalDetailPage() {
 
   const data = session.data;
   const pending = actions.isPending(data.id);
+  const stats = running ? liveSessionStats(data, currentPrice) : data.stats;
 
   return (
     <>
@@ -136,6 +139,12 @@ export function SignalDetailPage() {
       </PageHeader>
 
       {actions.error && <ErrorAlert message={actions.error} className="mb-6" />}
+
+      {stats && (
+        <div className="mb-6">
+          <SessionStatsGrid stats={stats} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div className="flex min-h-[500px] flex-col gap-6 lg:col-span-3">

@@ -203,6 +203,26 @@ export interface SignalSession {
   orders?: Order[] | null;
   events?: SessionEvent[] | null;
   balances?: WalletBalance[];
+  stats?: SessionStats;
+}
+
+/** Session performance in the pair's quote asset; values are null when the price is unknown. */
+export interface SessionStats {
+  quote: string;
+  current_price: number | null;
+  /** Initial capital valued at the current price (PnL is measured against holding it). */
+  initial_value: number | null;
+  current_value: number | null;
+  pnl: number | null;
+  /** Percentage, e.g. 5 means +5%. */
+  pnl_pct: number | null;
+  /** Filled orders. */
+  trades: number;
+  /** Orders that realized a profit or loss. */
+  closed_trades: number;
+  wins: number;
+  /** Ratio, null without closed trades. */
+  win_rate: number | null;
 }
 
 export interface StartSignalRequest {

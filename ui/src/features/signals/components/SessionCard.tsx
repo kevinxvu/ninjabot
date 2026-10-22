@@ -4,6 +4,7 @@ import type { SignalSession } from '@/api/types';
 import { KeyValueList } from '@/components/common/KeyValueList';
 import { SessionStatusBadge } from '@/components/common/StatusBadge';
 import { Button } from '@/components/ui/button';
+import { formatSignedPct, pnlTextClass } from '@/lib/format';
 import { formatClientDateTime } from '@/lib/time';
 import { sessionStrategyLabel, shortSessionId } from '../sessionLabels';
 
@@ -42,6 +43,11 @@ export function SessionCard({ session, pending, onStop, onResume, onDelete }: Se
         items={[
           { label: 'Strategy', value: `${sessionStrategyLabel(session)} · ${session.timeframe}` },
           { label: 'Initial Capital', value: `${session.initial_amount} ${session.initial_asset}` },
+          {
+            label: 'PnL',
+            value: formatSignedPct(session.stats?.pnl_pct),
+            valueClassName: pnlTextClass(session.stats?.pnl_pct),
+          },
           { label: 'Started', value: formatClientDateTime(session.created_at) },
           ...(running ? [] : [{ label: 'Stopped', value: formatClientDateTime(session.updated_at) }]),
         ]}

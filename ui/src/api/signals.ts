@@ -16,5 +16,8 @@ export const signalsApi = {
 
   resume: (id: string) => api.post(`${BASE}/${id}/resume`),
 
+  setTelegramAlerts: (id: string, enabled: boolean) =>
+    api.post<{ telegram_alerts: boolean }>(`${BASE}/${id}/telegram`, { enabled }),
+
   remove: (id: string) => api.delete(`${BASE}/${id}`),
 };

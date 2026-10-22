@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -295,8 +296,9 @@ func (c *Controller) OnCandle(candle model.Candle) {
 	c.lastPrice[candle.Pair] = candle.Close
 }
 
-func (c *Controller) updatePosition(o *model.Order) {
-	// get filled orders before the current order
+// applyToPosition updates the open position of o's pair with a filled order
+// and returns the realized result when the order reduces or closes it.
+func (c *Controller) applyToPosition(o *model.Order) *Result {
 	position, ok := c.position[o.Pair]
 	if !ok {
 		c.position[o.Pair] = &Position{
@@ -305,14 +307,42 @@ func (c *Controller) updatePosition(o *model.Order) {
 			CreatedAt: o.CreatedAt,
 			Side:      o.Side,
 		}
-		return
+		return nil
 	}
 
 	result, closed := position.Update(o)
 	if closed {
 		delete(c.position, o.Pair)
 	}
+	return result
+}
 
+// RestorePositions rebuilds the open positions from previously filled orders,
+// e.g. when a realtime session resumes, so the next closing order reports its
+// realized profit. It does not write to storage, results or the order feed.
+func (c *Controller) RestorePositions(orders []model.Order) {
+	filled := make([]model.Order, 0, len(orders))
+	for _, o := range orders {
+		if o.Status == model.OrderStatusTypeFilled {
+			filled = append(filled, o)
+		}
+	}
+	sort.SliceStable(filled, func(i, j int) bool {
+		if !filled[i].CreatedAt.Equal(filled[j].CreatedAt) {
+			return filled[i].CreatedAt.Before(filled[j].CreatedAt)
+		}
+		return filled[i].ID < filled[j].ID
+	})
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	for i := range filled {
+		c.applyToPosition(&filled[i])
+	}
+}
+
+func (c *Controller) updatePosition(o *model.Order) {
+	result := c.applyToPosition(o)
 	if result != nil {
 		// Persist the realized profit so it survives a reload from storage
 		// (e.g. realtime sessions rebuilt from SQLite).
@@ -427,6 +457,14 @@ func (c *Controller) updateOrders() {
 		c.orderFeed.Publish(processOrder, false)
 	}
 	c.mtx.Unlock()
+}
+
+// UpdateOrders processes the status changes of pending orders right away.
+// Backtests call it after every candle: the ticker started by Start runs on
+// wall-clock time, so it would see fills long after (or all at the end of) a
+// simulated run and attribute them to the wrong position.
+func (c *Controller) UpdateOrders() {
+	c.updateOrders()
 }
 
 func (c *Controller) Status() Status {

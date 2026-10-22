@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Activity, Play, Settings2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Activity, Bell, Play, Settings2 } from 'lucide-react';
 import { getErrorMessage } from '@/api/client';
 import { marketApi } from '@/api/market';
+import { settingsApi } from '@/api/settings';
 import { signalsApi } from '@/api/signals';
 import type { StartSignalRequest } from '@/api/types';
 import { ErrorAlert } from '@/components/common/ErrorAlert';
@@ -17,7 +18,9 @@ import { REALTIME_STRATEGIES } from '@/components/strategy/strategies';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useAsync } from '@/hooks/useAsync';
 import { splitPair } from '@/lib/pairs';
 
@@ -47,6 +50,11 @@ export function SignalSetupPage() {
   // Default to the quote asset unless the user explicitly picked the base asset.
   const initialAsset = form.initial_asset === asset ? asset : quote;
 
+  const telegram = useAsync('telegram-settings', settingsApi.getTelegram);
+  const telegramReady = !!telegram.data?.enabled && telegram.data.has_token && !!telegram.data.chat_id;
+  // Alerts default to on once Telegram is configured, until the user flips the switch.
+  const telegramAlerts = form.telegram_alerts ?? telegramReady;
+
   const update = (patch: Partial<StartSignalRequest>) => setForm((prev) => ({ ...prev, ...patch }));
 
   const handleSubmit = async (event: FormEvent) => {
@@ -54,7 +62,11 @@ export function SignalSetupPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const session = await signalsApi.start({ ...form, initial_asset: initialAsset });
+      const session = await signalsApi.start({
+        ...form,
+        initial_asset: initialAsset,
+        telegram_alerts: telegramAlerts,
+      });
       navigate(`/realtime-signals/${session.id}`);
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to start signal'));
@@ -120,6 +132,34 @@ export function SignalSetupPage() {
             </FormSection>
 
             <StrategyFields values={form} strategies={REALTIME_STRATEGIES} onChange={update} />
+
+            <FormSection icon={<Bell />} title="Notifications">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="telegram_alerts" className="text-sm font-medium">
+                    Send Telegram alerts
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {telegramReady ? (
+                      'Message your Telegram chat on each BUY/SELL signal. No real orders are placed.'
+                    ) : (
+                      <>
+                        Telegram is not configured yet.{' '}
+                        <Link to="/settings" className="font-medium text-primary hover:underline">
+                          Set up the bot
+                        </Link>{' '}
+                        to receive the alerts.
+                      </>
+                    )}
+                  </p>
+                </div>
+                <Switch
+                  id="telegram_alerts"
+                  checked={telegramAlerts}
+                  onCheckedChange={(telegram_alerts) => update({ telegram_alerts })}
+                />
+              </div>
+            </FormSection>
 
             <div className="space-y-4 pt-2">
               {error && <ErrorAlert message={error} />}

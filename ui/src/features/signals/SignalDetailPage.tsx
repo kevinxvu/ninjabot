@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { useAsync } from '@/hooks/useAsync';
 import { useMarketSocket } from '@/hooks/useMarketSocket';
 import { SessionMeta } from './components/SessionMeta';
+import { TelegramAlertToggle } from './components/TelegramAlertToggle';
 import { SessionStatsGrid } from './components/SessionStatsGrid';
 import { SignalHistory } from './components/SignalHistory';
 import { liveSessionStats } from './sessionStats';
@@ -29,6 +30,7 @@ export function SignalDetailPage() {
   const chart = useAsync(session.data ? `signal-chart:${id}` : null, () => signalsApi.getChart(id));
   const [currentPrice, setCurrentPrice] = useState(0);
   const [realtimeCandle, setRealtimeCandle] = useState<MarketCandle | null>(null);
+  const [alertError, setAlertError] = useState<string | null>(null);
 
   const { reload: reloadSession, mutate: mutateSession } = session;
   const { reload: reloadChart } = chart;
@@ -98,6 +100,12 @@ export function SignalDetailPage() {
         }
         actions={
           <>
+            <TelegramAlertToggle
+              sessionId={data.id}
+              enabled={!!data.telegram_alerts}
+              onChange={(telegram_alerts) => mutateSession((prev) => prev && { ...prev, telegram_alerts })}
+              onError={setAlertError}
+            />
             {running ? (
               <Button
                 variant="outline"
@@ -139,6 +147,7 @@ export function SignalDetailPage() {
       </PageHeader>
 
       {actions.error && <ErrorAlert message={actions.error} className="mb-6" />}
+      {alertError && <ErrorAlert message={alertError} className="mb-6" />}
 
       {stats && (
         <div className="mb-6">

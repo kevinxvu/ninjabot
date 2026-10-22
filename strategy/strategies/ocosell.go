@@ -1,6 +1,8 @@
 package strategies
 
 import (
+	"math"
+
 	"github.com/markcheno/go-talib"
 
 	"github.com/rodrigo-brito/ninjabot/indicator"
@@ -16,8 +18,10 @@ func (e OCOSell) Timeframe() string {
 	return "1d"
 }
 
+// WarmupPeriod covers the Stochastic (8, 3, 3) lookback of 11 candles plus
+// one, so the crossover check never compares against the zero padding.
 func (e OCOSell) WarmupPeriod() int {
-	return 9
+	return 13
 }
 
 func (e OCOSell) Indicators(df *model.Dataframe) []strategy.ChartIndicator {
@@ -65,8 +69,9 @@ func (e *OCOSell) OnCandle(df *model.Dataframe, broker service.Broker) {
 		return
 	}
 
-	buyAmount := 4000.0
-	if quotePosition > buyAmount && df.Metadata["stoch"].Crossover(df.Metadata["stoch_signal"]) {
+	// Buy up to 4000 quote per signal; smaller accounts use what they have.
+	buyAmount := math.Min(4000, quotePosition)
+	if buyAmount >= 10 && df.Metadata["stoch"].Crossover(df.Metadata["stoch_signal"]) {
 		size := buyAmount / closePrice
 		_, err := broker.CreateOrderMarket(model.SideTypeBuy, df.Pair, size)
 		if err != nil {
@@ -78,6 +83,8 @@ func (e *OCOSell) OnCandle(df *model.Dataframe, broker service.Broker) {
 				"quote": quotePosition,
 				"size":  size,
 			}).Error(err)
+			// Without the asset, the OCO sell would open a short position.
+			return
 		}
 
 		_, err = broker.CreateOrderOCO(model.SideTypeSell, df.Pair, size, closePrice*1.1, closePrice*0.95, closePrice*0.95)

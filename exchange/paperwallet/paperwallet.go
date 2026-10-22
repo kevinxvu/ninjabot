@@ -409,6 +409,18 @@ func (p *PaperWallet) updateAveragePrice(side model.SideType, pair string, amoun
 	}
 }
 
+// HasPendingOrders reports whether any order is waiting to be filled.
+func (p *PaperWallet) HasPendingOrders() bool {
+	p.Lock()
+	defer p.Unlock()
+	for _, pending := range p.pendingOrders {
+		if len(pending) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *PaperWallet) OnCandle(candle model.Candle) {
 	p.Lock()
 	defer p.Unlock()

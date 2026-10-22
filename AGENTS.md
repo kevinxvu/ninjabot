@@ -14,7 +14,7 @@ It has two parts:
 1. **The ninjabot Go framework** (root package + `exchange/`, `strategy/`, `indicator/`, `model/`, `order/`, ...).
    People import it into their own Go programs to build, backtest and run trading bots on Binance spot/futures.
 2. **The "TradingBot" web app** (`cmd/` + `server/` + `ui/`): one Go HTTP server with a React UI embedded via `go:embed`.
-   The UI has exactly three modules:
+   The UI has three modules plus a Settings page (Telegram alerts):
    - **Dashboard**: live Binance tickers, a live candlestick chart and the account portfolio value.
    - **Backtesting**: configure a strategy, run it on downloaded Binance history, then inspect charts and KPIs.
    - **Realtime Signals**: long-running paper-trading sessions on live Binance data, persisted in SQLite.
@@ -127,6 +127,9 @@ docs/backtest-flow.md     Detailed backtest flow walkthrough (Vietnamese)
 | `GET /api/realtime-signals/:id` | Session with orders, events, wallet balances and `stats` |
 | `GET /api/realtime-signals/:id/chart` | Chart payload for the session (also includes `events`) |
 | `POST /api/realtime-signals/:id/stop`, `/resume` | Lifecycle |
+| `POST /api/realtime-signals/:id/telegram` | `{enabled}`: turn the session's Telegram alerts on/off (applies to running bots) |
+| `GET/PUT /api/settings/telegram` | Telegram alert settings (single SQLite row). The token is never returned (`has_token`, `token_hint`); an empty `bot_token` on PUT keeps the saved one |
+| `POST /api/settings/telegram/test` | Send a test message with the submitted (unsaved) settings; 502 with Telegram's error on failure |
 | `DELETE /api/realtime-signals/:id` | Delete session |
 | `GET /ws/market` | WebSocket. Server → client messages: `TICKER {pair, price}`, `CANDLE {pair, data: model.Candle}`, `ORDER {session_id, data}`, `ERROR`. Client → server: `{action: "SUBSCRIBE_CANDLE", pair, timeframe}` |
 
@@ -144,7 +147,12 @@ JSON casing differs by source. `plot` candles use lowercase keys (`time`, `open`
 3. Resets the **shared** `plot.Chart` (`Reset`, `SetStrategy`, `SetPaperWallet`).
 4. Runs `ninjabot.NewBot(... WithBacktest ...)` and stores `computeSummary` output for `/api/summary`.
 
-The backtest strategy is picked with a `switch` in `runBacktest`, not via `internal/registry`. A new backtest strategy must be added there **and** to `ui/src/components/strategy/strategies.ts`.
+The backtest strategy is picked with a `switch` in `runBacktest`, not via `internal/registry`. A new backtest strategy must be added there **and** to `ui/src/components/strategy/strategies.ts` (its entry/exit/sizing texts feed the setup tooltip and the Strategy Guide page, so keep them in sync with the Go rules), with a scenario test in `strategy/strategies/strategies_test.go`.
+
+Two backtest details matter for correctness:
+- A `HighFrequencyStrategy` (the trailing stop) acts in `OnPartialCandle`, which only fires on resampled data, so `backtestSourceTimeframe` downloads 1h candles and `CSVFeed` groups them into the strategy timeframe.
+- `checkHistoryLength` rejects (400) a history shorter than the strategy's `WarmupPeriod` + 10 candles, so a run never ends with zero trades just for lack of data. `WarmupPeriod` must cover every indicator's lookback (plus one candle for crossovers); `TestWarmupCoversIndicators` enforces it. The UI's per-strategy `recommendedDays` (in `strategies.ts`) only sets the form default.
+- In backtest mode the order controller's wall-clock ticker is not started; `backtestCandles` calls `Controller.UpdateOrders()` after each candle that had pending orders, so limit/OCO fills are settled in simulated time.
 
 Because the chart and summary are global server state, only the latest backtest is viewable.
 
@@ -160,12 +168,13 @@ See `docs/backtest-flow.md` for a step-by-step walkthrough.
 
 - Sessions, orders and session events are persisted with gorm/SQLite in `ninjabot.db` (`storage/sqlite`). `ninjabot.db` is git-ignored local state.
 - Each running session is a background `bot.Run` goroutine on a `PaperWallet` fed by live Binance data, on its own context (never the request's). Its strategy is built via `internal/registry` from the session's stored `fast_period`/`slow_period` (only `emacross` and `turtle` are registered; the UI only offers `emacross`).
-- Start/resume reserve the session (`starting` map) and fetch chart candles without holding `SignalManager.mu`. `StopSession` persists the stopped state synchronously.
-- On resume, wallet balances are rebuilt from order history (`CalculateBalancesFromOrders`).
+- Start/resume reserve the session (`starting` map) and fetch chart candles without holding `SignalManager.mu`. `StopSession` cancels the bot's context, waits (up to 10s) for `bot.Run` to return, then persists the stopped state. In live mode `Run` returns on cancel and closes its Binance kline stream (`exchange/binance/stream.go`, which also retries failed dials and reconnects with a backoff up to 30s); never open data feeds on `context.Background()`.
+- On resume, wallet balances are rebuilt from order history (`CalculateBalancesFromOrders`) and so is the open position (`order.Controller.RestorePositions`), so the first SELL after a resume reports its profit.
 - `stats` (`model.SessionStats`, `server/handler/session_stats.go`) values the wallet at the last price in the pair's quote asset. PnL compares it with the initial capital valued at the same price, i.e. against simply holding the initial asset. Win rate uses orders with a realized `profit` (orders saved before profit was persisted have none). The detail page re-values it with the live ticker (`features/signals/sessionStats.ts`); keep both formulas in sync.
 - `RecoverStaleSessions` marks sessions left `running` after a crash as `stopped`. The STOP event uses the session's last `UpdatedAt`.
 - `GetSessionChart` serves the running bot's in-memory chart; for stopped sessions it rebuilds a fresh chart per request, limited to the last `maxRealtimeChartCandles` (3000) candles. `fetchSessionChartCandles` paginates Binance klines in 1000-candle windows. Keep that pattern for any long history fetch (Binance's hard limit is 1000 candles per request).
 - Orders are pushed to WS clients through `WsNotifier`.
+- Telegram alerts (`signal_alerts.go`, `server/telegram`): `SignalAlerter` sends one message per FILLED order of a session with `telegram_alerts` (plus optional start/resume/stop messages), gated by `model.TelegramAlertSettings` (Settings page). They are signals only: nothing is traded. Sending is async and errors are only logged. `withRequestLog` redacts `bot_token`-like fields; never log the token or a Bot API URL.
 
 ### WebSocket caveat
 
@@ -177,7 +186,7 @@ Stack: React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (Radix primiti
 
 ```
 ui/src/
-  App.tsx                 Routes: /dashboard, /backtesting, /backtesting/dashboard?pair=, /realtime-signals, /realtime-signals/setup, /realtime-signals/:id
+  App.tsx                 Routes: /dashboard, /backtesting[?strategy=], /backtesting/dashboard?pair=, /realtime-signals, /realtime-signals/setup, /realtime-signals/:id, /strategies[?s=], /settings
   index.css               Design tokens (:root/.dark) mapped to Tailwind via @theme inline; `label-style` utility
   api/                    client.ts (axios wrapper returning body, getErrorMessage), market.ts, backtest.ts, signals.ts, types.ts
   hooks/                  useAsync (fetch with stale-response guard, reload, mutate), useMarketSocket, useTradingPairs (shared cache), useLocalStorageState
@@ -190,7 +199,9 @@ ui/src/
   components/charts/      Plot (lazy Plotly wrapper), theme.ts (chart colors/layout), PriceChart + priceFigure.ts, LiveCandleChart, EquityChart
   features/dashboard/     DashboardPage + TickerCard, MarketChartCard, PortfolioCard
   features/backtesting/   BacktestSetupPage, BacktestResultPage, stats.ts, StatsGrid, PerformanceChart, TradesTable, BacktestSummary
-  features/signals/       SignalListPage, SignalSetupPage, SignalDetailPage, useSessionActions, SessionCard, SessionMeta, SignalHistory
+  features/signals/       SignalListPage, SignalSetupPage, SignalDetailPage, useSessionActions, SessionCard, SessionMeta, SignalHistory, TelegramAlertToggle
+  features/strategies/    StrategyGuidePage (how each strategy trades, when to use it; data from strategies.ts)
+  features/settings/      TelegramSettingsPage (bot token, chat ID, notification options, test message)
   types/plotly.d.ts       Module declarations for plotly.js-dist-min and react-plotly.js/factory
 ```
 

@@ -24,7 +24,9 @@ var defaultTickerPairs = []string{"BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"}
 // - If no "pairs" param is provided: returns { "pairs": ["BTCUSDT", "ETHUSDT", ...] }
 // - If "pairs" param is provided (e.g. ?pairs=BTCUSDT,ETHUSDT): returns {pair: {asset, quote, logo}}.
 func (h *Handler) HandlePairs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	// The list is filtered by what Binance is trading when the server starts,
+	// so browsers must revalidate instead of keeping a stale list for a day.
+	w.Header().Set("Cache-Control", "no-cache")
 
 	requested := parsePairs(r.URL.Query().Get("pairs"))
 

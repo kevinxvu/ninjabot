@@ -1,6 +1,9 @@
 package model
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 type PriorityQueue struct {
 	sync.Mutex
@@ -39,10 +42,15 @@ func (q *PriorityQueue) Push(item Item) {
 	}
 }
 
-func (q *PriorityQueue) PopLock() <-chan Item {
+// PopLock returns a channel that receives an item after each Push. Pending
+// sends are dropped once ctx is cancelled, so no goroutine stays blocked.
+func (q *PriorityQueue) PopLock(ctx context.Context) <-chan Item {
 	ch := make(chan Item)
 	q.notifyCallbacks = append(q.notifyCallbacks, func(_ Item) {
-		ch <- q.Pop()
+		select {
+		case ch <- q.Pop():
+		case <-ctx.Done():
+		}
 	})
 	return ch
 }

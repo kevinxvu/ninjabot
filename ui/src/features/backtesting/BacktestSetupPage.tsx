@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Activity, Play, Settings2 } from 'lucide-react';
 import { backtestApi } from '@/api/backtest';
 import { getErrorMessage } from '@/api/client';
@@ -34,26 +34,40 @@ const DEFAULT_CONFIG: BacktestRequest = {
   dca_buy_amount: 100,
 };
 
-/** Restores the last submitted configuration. */
-function loadConfig(): BacktestRequest {
-  return { ...DEFAULT_CONFIG, ...readJsonStorage<Partial<BacktestRequest>>(CONFIG_STORAGE_KEY) };
+/** Restores the last submitted configuration; `strategy` (from the guide's links) overrides the saved one. */
+function loadConfig(strategy: string | null): BacktestRequest {
+  const config = { ...DEFAULT_CONFIG, ...readJsonStorage<Partial<BacktestRequest>>(CONFIG_STORAGE_KEY) };
+  const requested = strategy ? getStrategy(strategy) : undefined;
+  if (!requested) return config;
+  return { ...config, strategy: requested.value, ...strategyDefaults(requested.value, config.days) };
+}
+
+/** Fields that follow the strategy: its fixed timeframe, and at least its recommended history. */
+function strategyDefaults(value: string, days: number): Partial<BacktestRequest> {
+  const strategy = getStrategy(value);
+  if (!strategy) return {};
+  return {
+    ...(strategy.fixedTimeframe ? { timeframe: strategy.fixedTimeframe } : {}),
+    days: Math.max(days, strategy.recommendedDays),
+  };
 }
 
 export function BacktestSetupPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState(loadConfig);
+  const [searchParams] = useSearchParams();
+  const [form, setForm] = useState(() => loadConfig(searchParams.get('strategy')));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // One pair per backtest; older saved configs may still hold a comma-separated list.
   const pair = parsePairList(form.pairs)[0] ?? '';
-  const fixedTimeframe = getStrategy(form.strategy)?.fixedTimeframe;
+  const selectedStrategy = getStrategy(form.strategy);
+  const fixedTimeframe = selectedStrategy?.fixedTimeframe;
 
   const update = (patch: Partial<BacktestRequest>) => setForm((prev) => ({ ...prev, ...patch }));
 
   const handleStrategyChange = (patch: Partial<StrategyValues>) => {
-    const fixed = patch.strategy ? getStrategy(patch.strategy)?.fixedTimeframe : undefined;
-    update({ ...patch, ...(fixed ? { timeframe: fixed } : {}) });
+    update({ ...patch, ...(patch.strategy ? strategyDefaults(patch.strategy, form.days) : {}) });
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -107,7 +121,15 @@ export function BacktestSetupPage() {
                     onChange={(timeframe) => update({ timeframe })}
                   />
                 </FormField>
-                <FormField label="History (days)" htmlFor="days">
+                <FormField
+                  label="History (days)"
+                  htmlFor="days"
+                  hint={
+                    selectedStrategy &&
+                    form.days < selectedStrategy.recommendedDays &&
+                    `${selectedStrategy.recommendedDays}+ days recommended for ${selectedStrategy.label}.`
+                  }
+                >
                   <Input
                     id="days"
                     type="number"

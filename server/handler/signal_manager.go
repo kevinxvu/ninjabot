@@ -17,6 +17,7 @@ import (
 	"github.com/rodrigo-brito/ninjabot/internal/registry"
 	"github.com/rodrigo-brito/ninjabot/model"
 	"github.com/rodrigo-brito/ninjabot/plot"
+	"github.com/rodrigo-brito/ninjabot/server/telegram"
 	serverws "github.com/rodrigo-brito/ninjabot/server/ws"
 	"github.com/rodrigo-brito/ninjabot/storage"
 	"github.com/rodrigo-brito/ninjabot/strategy"
@@ -62,7 +63,13 @@ type botInstance struct {
 	Bot    *ninjabot.NinjaBot
 	Cancel context.CancelFunc
 	Chart  *plot.Chart
+	// done is closed when the bot's Run has returned.
+	done chan struct{}
 }
+
+// botStopTimeout bounds how long StopSession waits for a cancelled bot to
+// finish its current candle.
+const botStopTimeout = 10 * time.Second
 
 // SignalManager manages realtime signal (live trading) sessions.
 type SignalManager struct {
@@ -72,6 +79,8 @@ type SignalManager struct {
 	db        storage.Storage
 	exchange  *exbinance.Binance
 	wsManager *serverws.MarketWebsocketManager
+	// alerter is nil when the storage cannot hold Telegram settings.
+	alerter *SignalAlerter
 }
 
 // NewSignalManager creates a new SignalManager.
@@ -82,6 +91,7 @@ func NewSignalManager(db storage.Storage, exc *exbinance.Binance, ws *serverws.M
 		db:        db,
 		exchange:  exc,
 		wsManager: ws,
+		alerter:   NewSignalAlerter(db, telegram.NewClient()),
 	}
 	m.RecoverStaleSessions()
 	return m
@@ -148,6 +158,8 @@ type StartSignalRequest struct {
 	InitialAmount float64 `json:"initial_amount"`
 	FastPeriod    int     `json:"fast_period"`
 	SlowPeriod    int     `json:"slow_period"`
+	// TelegramAlerts sends a Telegram message on each BUY/SELL signal.
+	TelegramAlerts bool `json:"telegram_alerts"`
 }
 
 func (m *SignalManager) recordSessionEvent(sessionID string, eventType model.SessionEventType) {
@@ -417,6 +429,12 @@ func (m *SignalManager) buildBot(ctx, botCtx context.Context, session *model.Ses
 	}
 
 	ninjabot.WithNotifier(notifier)(bot)
+	// Resumed sessions continue the position they held, so the next SELL
+	// reports its profit against the original entry.
+	bot.Controller().RestorePositions(session.Orders)
+	if m.alerter != nil {
+		ninjabot.WithOrderSubscription(m.alerter.OrderNotifier(session.ID))(bot)
+	}
 
 	chart, err := plot.NewChart(
 		plot.WithStrategyIndicators(currentStrategy),
@@ -446,6 +464,7 @@ func (m *SignalManager) buildBot(ctx, botCtx context.Context, session *model.Ses
 	return &botInstance{
 		Bot:   bot,
 		Chart: chart,
+		done:  make(chan struct{}),
 	}, nil
 }
 
@@ -491,6 +510,7 @@ func (m *SignalManager) launch(ctx, botCtx context.Context, cancel context.Cance
 }
 
 func (m *SignalManager) run(ctx context.Context, sessionID string, instance *botInstance) {
+	defer close(instance.done)
 	log.Infof("Starting realtime signal session %s", sessionID)
 	err := instance.Bot.Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -544,18 +564,19 @@ func (m *SignalManager) markFailed(session *model.Session) {
 func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest) (*model.Session, error) {
 	now := time.Now()
 	session := &model.Session{
-		ID:            uuid.New().String(),
-		Type:          "REALTIME_SIGNAL",
-		Status:        "running",
-		Pair:          req.Pair,
-		Strategy:      req.Strategy,
-		Timeframe:     req.Timeframe,
-		InitialAsset:  req.InitialAsset,
-		InitialAmount: req.InitialAmount,
-		FastPeriod:    req.FastPeriod,
-		SlowPeriod:    req.SlowPeriod,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:             uuid.New().String(),
+		Type:           "REALTIME_SIGNAL",
+		Status:         "running",
+		Pair:           req.Pair,
+		Strategy:       req.Strategy,
+		Timeframe:      req.Timeframe,
+		InitialAsset:   req.InitialAsset,
+		InitialAmount:  req.InitialAmount,
+		FastPeriod:     req.FastPeriod,
+		SlowPeriod:     req.SlowPeriod,
+		TelegramAlerts: req.TelegramAlerts,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 
 	if err := m.db.CreateSession(session); err != nil {
@@ -574,6 +595,7 @@ func (m *SignalManager) StartSession(ctx context.Context, req StartSignalRequest
 		m.markFailed(session)
 		return nil, err
 	}
+	m.alerter.SessionEvent(session, model.SessionEventTypeStart)
 
 	return session, nil
 }
@@ -611,12 +633,14 @@ func (m *SignalManager) ResumeSession(ctx context.Context, sessionID string) (*m
 		m.markFailed(session)
 		return nil, err
 	}
+	m.alerter.SessionEvent(session, model.SessionEventTypeResume)
 
 	return session, nil
 }
 
-// StopSession cancels the session's bot (running or still starting) and
-// persists the stopped state before returning, so a follow-up GET sees it.
+// StopSession cancels the session's bot (running or still starting), waits
+// for it to exit so it cannot place another order, and persists the stopped
+// state before returning, so a follow-up GET sees it.
 func (m *SignalManager) StopSession(sessionID string) error {
 	m.mu.Lock()
 	instance, running := m.bots[sessionID]
@@ -629,6 +653,14 @@ func (m *SignalManager) StopSession(sessionID string) error {
 		cancelStart()
 	}
 	m.mu.Unlock()
+
+	if running {
+		select {
+		case <-instance.done:
+		case <-time.After(botStopTimeout):
+			log.Warnf("Session %s bot did not exit within %s", sessionID, botStopTimeout)
+		}
+	}
 
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {
@@ -644,7 +676,22 @@ func (m *SignalManager) StopSession(sessionID string) error {
 		return fmt.Errorf("update session %s: %w", sessionID, err)
 	}
 	m.recordSessionEvent(sessionID, model.SessionEventTypeStop)
+	m.alerter.SessionEvent(session, model.SessionEventTypeStop)
 	return nil
+}
+
+// SetTelegramAlerts turns a session's Telegram alerts on or off. Running bots
+// read the flag on every signal, so the change applies immediately.
+func (m *SignalManager) SetTelegramAlerts(sessionID string, enabled bool) (*model.Session, error) {
+	session, err := m.db.GetSessionByID(sessionID)
+	if err != nil {
+		return nil, err
+	}
+	session.TelegramAlerts = enabled
+	if err := m.db.UpdateSession(session); err != nil {
+		return nil, fmt.Errorf("update session %s: %w", sessionID, err)
+	}
+	return session, nil
 }
 
 func (m *SignalManager) GetSessionBalances(sessionID string) ([]model.Balance, error) {

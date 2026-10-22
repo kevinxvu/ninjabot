@@ -63,7 +63,13 @@ type botInstance struct {
 	Bot    *ninjabot.NinjaBot
 	Cancel context.CancelFunc
 	Chart  *plot.Chart
+	// done is closed when the bot's Run has returned.
+	done chan struct{}
 }
+
+// botStopTimeout bounds how long StopSession waits for a cancelled bot to
+// finish its current candle.
+const botStopTimeout = 10 * time.Second
 
 // SignalManager manages realtime signal (live trading) sessions.
 type SignalManager struct {
@@ -423,6 +429,9 @@ func (m *SignalManager) buildBot(ctx, botCtx context.Context, session *model.Ses
 	}
 
 	ninjabot.WithNotifier(notifier)(bot)
+	// Resumed sessions continue the position they held, so the next SELL
+	// reports its profit against the original entry.
+	bot.Controller().RestorePositions(session.Orders)
 	if m.alerter != nil {
 		ninjabot.WithOrderSubscription(m.alerter.OrderNotifier(session.ID))(bot)
 	}
@@ -455,6 +464,7 @@ func (m *SignalManager) buildBot(ctx, botCtx context.Context, session *model.Ses
 	return &botInstance{
 		Bot:   bot,
 		Chart: chart,
+		done:  make(chan struct{}),
 	}, nil
 }
 
@@ -500,6 +510,7 @@ func (m *SignalManager) launch(ctx, botCtx context.Context, cancel context.Cance
 }
 
 func (m *SignalManager) run(ctx context.Context, sessionID string, instance *botInstance) {
+	defer close(instance.done)
 	log.Infof("Starting realtime signal session %s", sessionID)
 	err := instance.Bot.Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
@@ -627,8 +638,9 @@ func (m *SignalManager) ResumeSession(ctx context.Context, sessionID string) (*m
 	return session, nil
 }
 
-// StopSession cancels the session's bot (running or still starting) and
-// persists the stopped state before returning, so a follow-up GET sees it.
+// StopSession cancels the session's bot (running or still starting), waits
+// for it to exit so it cannot place another order, and persists the stopped
+// state before returning, so a follow-up GET sees it.
 func (m *SignalManager) StopSession(sessionID string) error {
 	m.mu.Lock()
 	instance, running := m.bots[sessionID]
@@ -641,6 +653,14 @@ func (m *SignalManager) StopSession(sessionID string) error {
 		cancelStart()
 	}
 	m.mu.Unlock()
+
+	if running {
+		select {
+		case <-instance.done:
+		case <-time.After(botStopTimeout):
+			log.Warnf("Session %s bot did not exit within %s", sessionID, botStopTimeout)
+		}
+	}
 
 	session, err := m.db.GetSessionByID(sessionID)
 	if err != nil {

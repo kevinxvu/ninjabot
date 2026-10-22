@@ -307,10 +307,20 @@ func (n *NinjaBot) processCandle(candle model.Candle) {
 	}
 }
 
-// Process pending candles in buffer
-func (n *NinjaBot) processCandles() {
-	for item := range n.priorityQueueCandle.PopLock() {
-		n.processCandle(item.(model.Candle))
+// processCandles processes buffered candles until ctx is cancelled.
+func (n *NinjaBot) processCandles(ctx context.Context) {
+	candles := n.priorityQueueCandle.PopLock(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case item := <-candles:
+			// A candle may race with cancellation; never trade after it.
+			if ctx.Err() != nil {
+				return
+			}
+			n.processCandle(item.(model.Candle))
+		}
 	}
 }
 
@@ -360,7 +370,8 @@ func (n *NinjaBot) preload(ctx context.Context, pair string) error {
 	return nil
 }
 
-// Run will initialize the strategy controller, order controller, preload data and start the bot
+// Run will initialize the strategy controller, order controller, preload data and start the bot.
+// In live mode it blocks until ctx is cancelled, then stops the data feed and the order controller.
 func (n *NinjaBot) Run(ctx context.Context) error {
 	for _, pair := range n.settings.Pairs {
 		// setup and subscribe strategy to data feed (candles)
@@ -388,13 +399,13 @@ func (n *NinjaBot) Run(ctx context.Context) error {
 	}
 
 	// start data feed and receives new candles
-	n.dataFeed.Start(n.backtest)
+	n.dataFeed.Start(ctx, n.backtest)
 
 	// start processing new candles for production or backtesting environment
 	if n.backtest {
 		n.backtestCandles()
 	} else {
-		n.processCandles()
+		n.processCandles(ctx)
 	}
 
 	return nil

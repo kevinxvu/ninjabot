@@ -73,11 +73,13 @@ func (d *DataFeedSubscription) Preload(pair, timeframe string, candles []model.C
 	}
 }
 
-func (d *DataFeedSubscription) Connect() {
+// Connect opens one candle subscription per feed. The subscriptions end, and
+// their channels close, when ctx is cancelled.
+func (d *DataFeedSubscription) Connect(ctx context.Context) {
 	log.Infof("Connecting to the exchange.")
 	for feed := range d.Feeds.Iter() {
 		pair, timeframe := d.pairTimeframeFromKey(feed)
-		ccandle, cerr := d.exchange.CandlesSubscription(context.Background(), pair, timeframe)
+		ccandle, cerr := d.exchange.CandlesSubscription(ctx, pair, timeframe)
 		d.DataFeeds[feed] = &DataFeed{
 			Data: ccandle,
 			Err:  cerr,
@@ -85,12 +87,15 @@ func (d *DataFeedSubscription) Connect() {
 	}
 }
 
-func (d *DataFeedSubscription) Start(loadSync bool) {
-	d.Connect()
+// Start connects the feeds and forwards candles to the subscribers until ctx
+// is cancelled. With loadSync it blocks until every feed is drained.
+func (d *DataFeedSubscription) Start(ctx context.Context, loadSync bool) {
+	d.Connect(ctx)
 	wg := new(sync.WaitGroup)
 	for key, feed := range d.DataFeeds {
 		wg.Add(1)
 		go func(key string, feed *DataFeed) {
+			errs := feed.Err
 			for {
 				select {
 				case candle, ok := <-feed.Data:
@@ -104,7 +109,11 @@ func (d *DataFeedSubscription) Start(loadSync bool) {
 						}
 						subscription.consumer(candle)
 					}
-				case err := <-feed.Err:
+				case err, ok := <-errs:
+					if !ok {
+						errs = nil // closed: stop selecting on it
+						continue
+					}
 					if err != nil {
 						log.Error("dataFeedSubscription/start: ", err)
 					}

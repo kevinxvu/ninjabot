@@ -222,3 +222,80 @@ func TestController_Position(t *testing.T) {
 	assert.Equal(t, 1.0, asset)
 	assert.Equal(t, 1500.0, quote)
 }
+
+func TestController_RestorePositions(t *testing.T) {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	filled := func(id int64, side model.SideType, price, qty float64, at time.Duration) model.Order {
+		return model.Order{
+			ID: id, Pair: "BTCUSDT", Side: side, Type: model.OrderTypeMarket,
+			Status: model.OrderStatusTypeFilled, Price: price, Quantity: qty, CreatedAt: t0.Add(at),
+		}
+	}
+
+	tt := []struct {
+		name       string
+		history    []model.Order
+		wantOpen   bool
+		wantAvg    float64
+		wantQty    float64
+		sellProfit float64 // profit of selling 1 BTC at 3000 after the restore
+	}{
+		{
+			name: "open long, unsorted history",
+			history: []model.Order{
+				filled(2, model.SideTypeBuy, 2000, 1, time.Hour),
+				filled(1, model.SideTypeBuy, 1000, 1, 0),
+				{ID: 3, Pair: "BTCUSDT", Side: model.SideTypeBuy, Status: model.OrderStatusTypeCanceled, Price: 5000, Quantity: 1},
+			},
+			wantOpen: true, wantAvg: 1500, wantQty: 2, sellProfit: 1,
+		},
+		{
+			name: "partially closed",
+			history: []model.Order{
+				filled(1, model.SideTypeBuy, 1500, 2, 0),
+				filled(2, model.SideTypeSell, 2000, 1, time.Hour),
+			},
+			wantOpen: true, wantAvg: 1500, wantQty: 1, sellProfit: 1,
+		},
+		{
+			name: "closed position",
+			history: []model.Order{
+				filled(1, model.SideTypeBuy, 1000, 1, 0),
+				filled(2, model.SideTypeSell, 2000, 1, time.Hour),
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			storage, err := storagebuntdb.FromMemory()
+			require.NoError(t, err)
+			ctx := context.Background()
+			wallet := expaperwallet.NewPaperWallet(ctx, "USDT",
+				expaperwallet.WithPaperAsset("USDT", 10000), expaperwallet.WithPaperAsset("BTC", 2))
+			controller := NewController(ctx, wallet, storage, NewOrderFeed())
+
+			controller.RestorePositions(tc.history)
+
+			position, open := controller.position["BTCUSDT"]
+			require.Equal(t, tc.wantOpen, open)
+			if !tc.wantOpen {
+				return
+			}
+			assert.Equal(t, tc.wantAvg, position.AvgPrice)
+			assert.Equal(t, tc.wantQty, position.Quantity)
+			assert.Equal(t, model.SideTypeBuy, position.Side)
+
+			// Restoring must not write anything.
+			orders, err := storage.Orders()
+			require.NoError(t, err)
+			assert.Empty(t, orders)
+
+			wallet.OnCandle(model.Candle{Pair: "BTCUSDT", Close: 3000})
+			order, err := controller.CreateOrderMarket(model.SideTypeSell, "BTCUSDT", 1)
+			require.NoError(t, err)
+			assert.Equal(t, tc.sellProfit, order.Profit)
+			assert.Equal(t, 1500.0, order.ProfitValue)
+		})
+	}
+}

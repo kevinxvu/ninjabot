@@ -8,7 +8,6 @@ import (
 
 	gobinance "github.com/adshao/go-binance/v2"
 	"github.com/adshao/go-binance/v2/common"
-	"github.com/jpillora/backoff"
 
 	xch "github.com/rodrigo-brito/ninjabot/exchange"
 	"github.com/rodrigo-brito/ninjabot/model"
@@ -512,57 +511,27 @@ func (b *Binance) Position(pair string) (asset, quote float64, err error) {
 }
 
 func (b *Binance) CandlesSubscription(ctx context.Context, pair, period string) (chan model.Candle, chan error) {
-	ccandle := make(chan model.Candle)
-	cerr := make(chan error)
 	ha := model.NewHeikinAshi()
 
-	go func() {
-		ba := &backoff.Backoff{
-			Min: 100 * time.Millisecond,
-			Max: 1 * time.Second,
-		}
+	return serveCandles(ctx, func(onCandle func(model.Candle), onError func(error)) (chan struct{}, chan struct{}, error) {
+		return gobinance.WsKlineServe(pair, period, func(event *gobinance.WsKlineEvent) {
+			candle := CandleFromWsKline(pair, event.Kline)
 
-		for {
-			done, _, err := gobinance.WsKlineServe(pair, period, func(event *gobinance.WsKlineEvent) {
-				ba.Reset()
-				candle := CandleFromWsKline(pair, event.Kline)
-
-				if candle.Complete && b.HeikinAshi {
-					candle = candle.ToHeikinAshi(ha)
-				}
-
-				if candle.Complete {
-					// fetch aditional data if needed
-					for _, fetcher := range b.MetadataFetchers {
-						key, value := fetcher(pair, candle.Time)
-						candle.Metadata[key] = value
-					}
-				}
-
-				ccandle <- candle
-
-			}, func(err error) {
-				cerr <- err
-			})
-			if err != nil {
-				cerr <- err
-				close(cerr)
-				close(ccandle)
-				return
+			if candle.Complete && b.HeikinAshi {
+				candle = candle.ToHeikinAshi(ha)
 			}
 
-			select {
-			case <-ctx.Done():
-				close(cerr)
-				close(ccandle)
-				return
-			case <-done:
-				time.Sleep(ba.Duration())
+			if candle.Complete {
+				// fetch aditional data if needed
+				for _, fetcher := range b.MetadataFetchers {
+					key, value := fetcher(pair, candle.Time)
+					candle.Metadata[key] = value
+				}
 			}
-		}
-	}()
 
-	return ccandle, cerr
+			onCandle(candle)
+		}, onError)
+	})
 }
 
 func (b *Binance) CandlesByLimit(ctx context.Context, pair, period string, limit int) ([]model.Candle, error) {

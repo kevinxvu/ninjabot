@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,4 +133,33 @@ func TestNormalizeStartRequest(t *testing.T) {
 			tc.check(t, req)
 		})
 	}
+}
+
+func TestStopSessionWaitsForBotExit(t *testing.T) {
+	h := newSignalTestHandler(t)
+	m := h.signalMgr
+	require.NoError(t, h.db.CreateSession(&model.Session{
+		ID: "s1", Type: "REALTIME_SIGNAL", Status: "running", Pair: "BTCUSDT",
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	// The fake bot needs a moment to finish its candle after cancellation.
+	var exited atomic.Bool
+	instance := &botInstance{done: make(chan struct{})}
+	instance.Cancel = func() {
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			exited.Store(true)
+			close(instance.done)
+		}()
+	}
+	m.bots["s1"] = instance
+
+	require.NoError(t, m.StopSession("s1"))
+	require.True(t, exited.Load(), "StopSession returned before the bot exited")
+	require.False(t, m.IsRunning("s1"))
+
+	session, err := h.db.GetSessionByID("s1")
+	require.NoError(t, err)
+	require.Equal(t, "stopped", session.Status)
 }

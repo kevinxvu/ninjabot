@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -131,7 +132,7 @@ func withRequestLog(next http.HandlerFunc) http.HandlerFunc {
 			if err != nil {
 				log.Errorf("request log read body [%s %s]: %v", r.Method, fullURL, err)
 			} else {
-				log.Infof("request [%s %s] body: %s", r.Method, fullURL, strings.TrimSpace(string(body)))
+				log.Infof("request [%s %s] body: %s", r.Method, fullURL, redactSecrets(strings.TrimSpace(string(body))))
 				// Restore body so downstream handlers can read it again.
 				r.Body = io.NopCloser(bytes.NewReader(body))
 			}
@@ -141,6 +142,14 @@ func withRequestLog(next http.HandlerFunc) http.HandlerFunc {
 
 		next(w, r)
 	}
+}
+
+// secretFieldPattern matches JSON string fields that must never reach the logs.
+var secretFieldPattern = regexp.MustCompile(`("(?:bot_token|api_key|api_secret|token|secret)"\s*:\s*)"(?:[^"\\]|\\.)*"`)
+
+// redactSecrets masks secret JSON fields of a logged request body.
+func redactSecrets(body string) string {
+	return secretFieldPattern.ReplaceAllString(body, `$1"[REDACTED]"`)
 }
 
 // Middleware combines request logging and panic recovery into a single wrapper.

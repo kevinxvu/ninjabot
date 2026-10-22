@@ -25,6 +25,14 @@ type Storage interface {
 	GetSessionEvents(sessionID string) ([]model.SessionEvent, error)
 }
 
+// TelegramAlertSettingsStorage persists the web app's Telegram alert settings.
+type TelegramAlertSettingsStorage interface {
+	// GetTelegramAlertSettings returns the saved settings, or the defaults when
+	// none were saved yet.
+	GetTelegramAlertSettings() (*model.TelegramAlertSettings, error)
+	SaveTelegramAlertSettings(settings *model.TelegramAlertSettings) error
+}
+
 func WithStatusIn(status ...model.OrderStatusType) OrderFilter {
 	return func(order model.Order) bool {
 		for _, s := range status {

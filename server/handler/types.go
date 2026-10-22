@@ -1,5 +1,7 @@
 package handler
 
+import "time"
+
 // backtestRequest holds parameters for POST /api/backtest.
 type backtestRequest struct {
 	Pairs          string  `json:"pairs"`
@@ -89,4 +91,34 @@ type PairInfo struct {
 type PortfolioResponse struct {
 	TotalValueUSDT float64        `json:"total_value_usdt"`
 	Assets         []assetBalance `json:"assets"`
+}
+
+// sessionTelegramRequest is the body of POST /api/realtime-signals/:id/telegram.
+type sessionTelegramRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// telegramSettingsRequest is the body of PUT /api/settings/telegram and
+// POST /api/settings/telegram/test. An empty BotToken keeps the saved one.
+type telegramSettingsRequest struct {
+	Enabled             bool   `json:"enabled"`
+	BotToken            string `json:"bot_token"`
+	ChatID              string `json:"chat_id"`
+	NotifyBuy           bool   `json:"notify_buy"`
+	NotifySell          bool   `json:"notify_sell"`
+	NotifySessionEvents bool   `json:"notify_session_events"`
+	Silent              bool   `json:"silent"`
+}
+
+// telegramSettingsResponse never includes the bot token, only a masked hint.
+type telegramSettingsResponse struct {
+	Enabled             bool       `json:"enabled"`
+	HasToken            bool       `json:"has_token"`
+	TokenHint           string     `json:"token_hint"`
+	ChatID              string     `json:"chat_id"`
+	NotifyBuy           bool       `json:"notify_buy"`
+	NotifySell          bool       `json:"notify_sell"`
+	NotifySessionEvents bool       `json:"notify_session_events"`
+	Silent              bool       `json:"silent"`
+	UpdatedAt           *time.Time `json:"updated_at"`
 }

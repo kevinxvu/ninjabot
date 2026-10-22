@@ -35,6 +35,10 @@ func SetupRouter(h *serverhandler.Handler) *http.ServeMux {
 	mux.HandleFunc("/api/realtime-signals", serverhandler.Middleware(h.HandleListRealtimeSignals))
 	mux.HandleFunc("/api/realtime-signals/start", serverhandler.Middleware(h.HandleStartRealtimeSignal))
 	mux.HandleFunc("/api/realtime-signals/", serverhandler.Middleware(h.HandleRealtimeSignal))
+
+	// Settings API
+	mux.HandleFunc("/api/settings/telegram", serverhandler.Middleware(h.HandleTelegramSettings))
+	mux.HandleFunc("/api/settings/telegram/test", serverhandler.Middleware(h.HandleTelegramTest))
 	mux.HandleFunc("/api/", serverhandler.Middleware(h.HandleNotFound))
 
 	mux.HandleFunc("/ws/market", serverhandler.Middleware(h.HandleMarketWebsocket))

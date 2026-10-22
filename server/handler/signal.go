@@ -43,6 +43,10 @@ func (h *Handler) HandleRealtimeSignal(w http.ResponseWriter, r *http.Request) {
 		if allowMethod(w, r, http.MethodGet) {
 			h.handleSessionChart(w, r, id)
 		}
+	case "telegram":
+		if allowMethod(w, r, http.MethodPost) {
+			h.handleSetSessionTelegram(w, r, id)
+		}
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
@@ -108,6 +112,23 @@ func (h *Handler) handleResumeRealtimeSignal(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeJSON(w, http.StatusOK, session)
+}
+
+// handleSetSessionTelegram POST /api/realtime-signals/:id/telegram
+func (h *Handler) handleSetSessionTelegram(w http.ResponseWriter, r *http.Request, id string) {
+	var req sessionTelegramRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	session, err := h.signalMgr.SetTelegramAlerts(id, req.Enabled)
+	if err != nil {
+		writeError(w, errorStatus(err), err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"telegram_alerts": session.TelegramAlerts})
 }
 
 // HandleListRealtimeSignals GET /api/realtime-signals

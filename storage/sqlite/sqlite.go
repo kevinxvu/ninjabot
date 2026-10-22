@@ -38,7 +38,7 @@ func FromSQL(dialect gorm.Dialector, opts ...gorm.Option) (storage.Storage, erro
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	err = db.AutoMigrate(&model.Session{}, &model.Order{}, &model.SessionEvent{})
+	err = db.AutoMigrate(&model.Session{}, &model.Order{}, &model.SessionEvent{}, &model.TelegramAlertSettings{})
 	if err != nil {
 		return nil, err
 	}
@@ -139,4 +139,24 @@ func (s *SQL) GetSessionEvents(sessionID string) ([]model.SessionEvent, error) {
 	var events []model.SessionEvent
 	err := s.db.Where("session_id = ?", sessionID).Order("created_at asc").Find(&events).Error
 	return events, err
+}
+
+// GetTelegramAlertSettings returns the saved Telegram settings, or the defaults
+// when none were saved yet.
+func (s *SQL) GetTelegramAlertSettings() (*model.TelegramAlertSettings, error) {
+	var settings model.TelegramAlertSettings
+	err := s.db.Where("id = ?", model.TelegramAlertSettingsID).First(&settings).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.DefaultTelegramAlertSettings(), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &settings, nil
+}
+
+// SaveTelegramAlertSettings stores the single Telegram settings row.
+func (s *SQL) SaveTelegramAlertSettings(settings *model.TelegramAlertSettings) error {
+	settings.ID = model.TelegramAlertSettingsID
+	return s.db.Save(settings).Error
 }

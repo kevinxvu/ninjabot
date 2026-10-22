@@ -198,6 +198,8 @@ export interface SignalSession {
   /** EMA periods for emacross sessions (0 means the strategy default; older sessions). */
   fast_period?: number;
   slow_period?: number;
+  /** Sends a Telegram message on each BUY/SELL signal (see TelegramSettings). */
+  telegram_alerts?: boolean;
   created_at: Timestamp;
   updated_at: Timestamp;
   orders?: Order[] | null;
@@ -233,6 +235,35 @@ export interface StartSignalRequest {
   initial_amount: number;
   fast_period: number;
   slow_period: number;
+  telegram_alerts?: boolean;
+}
+
+// ---- Settings ----
+
+/** Mirrors telegramSettingsResponse in server/handler/types.go. The bot token is never returned. */
+export interface TelegramSettings {
+  enabled: boolean;
+  has_token: boolean;
+  /** Masked token, e.g. "123456789:••••abcd". */
+  token_hint: string;
+  /** Numeric user/group ID or @channel. */
+  chat_id: string;
+  notify_buy: boolean;
+  notify_sell: boolean;
+  notify_session_events: boolean;
+  silent: boolean;
+  updated_at: Timestamp | null;
+}
+
+/** Body of PUT /api/settings/telegram and POST /api/settings/telegram/test. An empty bot_token keeps the saved one. */
+export interface TelegramSettingsRequest {
+  enabled: boolean;
+  bot_token: string;
+  chat_id: string;
+  notify_buy: boolean;
+  notify_sell: boolean;
+  notify_session_events: boolean;
+  silent: boolean;
 }
 
 // ---- Websocket ----

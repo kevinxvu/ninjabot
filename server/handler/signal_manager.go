@@ -191,13 +191,26 @@ func timeframeDuration(timeframe string) (time.Duration, bool) {
 	return 0, false
 }
 
-func realtimeChartStartTime(session *model.Session, currentStrategy strategy.Strategy) time.Time {
+// maxRealtimeChartCandles caps the history rebuilt for a session chart. Older
+// long-running sessions on small timeframes (e.g. months of 1m candles) would
+// otherwise need hundreds of sequential Binance requests and an unplottable
+// payload.
+const maxRealtimeChartCandles = 3000
+
+// realtimeChartStartTime returns where the session chart history begins: the
+// session start minus the strategy warmup, but no more than
+// maxRealtimeChartCandles before end.
+func realtimeChartStartTime(session *model.Session, currentStrategy strategy.Strategy, end time.Time) time.Time {
 	duration, ok := timeframeDuration(session.Timeframe)
 	if !ok {
 		return session.CreatedAt
 	}
 
-	return session.CreatedAt.Add(-duration * time.Duration(currentStrategy.WarmupPeriod()))
+	start := session.CreatedAt.Add(-duration * time.Duration(currentStrategy.WarmupPeriod()))
+	if earliest := end.Add(-duration * maxRealtimeChartCandles); start.Before(earliest) {
+		start = earliest
+	}
+	return start
 }
 
 func realtimeChartEndTime(session *model.Session, now time.Time) time.Time {
@@ -261,7 +274,7 @@ func sessionEventsForDisplay(session *model.Session) []model.SessionEvent {
 }
 
 func (m *SignalManager) fetchSessionChartCandles(ctx context.Context, session *model.Session, currentStrategy strategy.Strategy, end time.Time) ([]model.Candle, error) {
-	start := realtimeChartStartTime(session, currentStrategy)
+	start := realtimeChartStartTime(session, currentStrategy, end)
 	duration, ok := timeframeDuration(session.Timeframe)
 	if !ok {
 		return m.exchange.CandlesByPeriod(ctx, session.Pair, session.Timeframe, start, end)

@@ -23,9 +23,23 @@ func TestRealtimeChartStartTimeIncludesStrategyWarmup(t *testing.T) {
 	}
 	strategy := strategies.NewCrossEMA("1h", 8, 21)
 
-	start := realtimeChartStartTime(session, strategy)
+	start := realtimeChartStartTime(session, strategy, createdAt.Add(time.Hour))
 
 	require.Equal(t, createdAt.Add(-22*time.Hour), start)
+}
+
+func TestRealtimeChartStartTimeCapsLongSessions(t *testing.T) {
+	createdAt := time.Date(2026, 5, 19, 1, 57, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 22, 10, 53, 0, 0, time.UTC)
+	session := &model.Session{
+		Timeframe: "1m",
+		CreatedAt: createdAt,
+	}
+	strategy := strategies.NewCrossEMA("1m", 8, 21)
+
+	start := realtimeChartStartTime(session, strategy, end)
+
+	require.Equal(t, end.Add(-maxRealtimeChartCandles*time.Minute), start)
 }
 
 func TestRealtimeChartEndTimeUsesNowForStoppedSession(t *testing.T) {

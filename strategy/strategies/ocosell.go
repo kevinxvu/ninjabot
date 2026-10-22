@@ -18,8 +18,10 @@ func (e OCOSell) Timeframe() string {
 	return "1d"
 }
 
+// WarmupPeriod covers the Stochastic (8, 3, 3) lookback of 11 candles plus
+// one, so the crossover check never compares against the zero padding.
 func (e OCOSell) WarmupPeriod() int {
-	return 9
+	return 13
 }
 
 func (e OCOSell) Indicators(df *model.Dataframe) []strategy.ChartIndicator {

@@ -33,8 +33,10 @@ func (t trailing) Timeframe() string {
 	return "4h"
 }
 
+// WarmupPeriod lets SMA 21 be valid on the previous candle too, so the first
+// crossover is not missed.
 func (t trailing) WarmupPeriod() int {
-	return 21
+	return 22
 }
 
 func (t trailing) Indicators(df *model.Dataframe) []strategy.ChartIndicator {

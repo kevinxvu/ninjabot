@@ -20,6 +20,8 @@ export interface StrategyDefinition {
   tip?: string;
   /** Whether realtime signal sessions can run it. */
   realtime: boolean;
+  /** Backtest history that gives enough trades to judge the strategy. */
+  recommendedDays: number;
 }
 
 export const STRATEGIES: StrategyDefinition[] = [
@@ -42,6 +44,7 @@ export const STRATEGIES: StrategyDefinition[] = [
     ],
     tip: 'Shorter periods (e.g. 5/13) react faster but give more false signals; longer ones (e.g. 20/50) trade less and lag more.',
     realtime: true,
+    recommendedDays: 60,
   },
   {
     value: 'dca',
@@ -64,6 +67,7 @@ export const STRATEGIES: StrategyDefinition[] = [
     ],
     tip: 'DCA never closes a trade, so win rate and trade counts stay at 0. Judge it by final portfolio and gross profit.',
     realtime: false,
+    recommendedDays: 365,
   },
   {
     value: 'ocosell',
@@ -86,6 +90,7 @@ export const STRATEGIES: StrategyDefinition[] = [
     ],
     tip: 'Each closed trade should show about +10% or -5%. Profit depends on win rate: above ~34% wins is profitable before fees.',
     realtime: false,
+    recommendedDays: 365,
   },
   {
     value: 'trailingstop',
@@ -107,6 +112,7 @@ export const STRATEGIES: StrategyDefinition[] = [
     ],
     tip: 'Backtests feed hourly candles so the stop reacts inside each 4h candle, like it would live.',
     realtime: false,
+    recommendedDays: 180,
   },
   {
     value: 'turtle',
@@ -128,6 +134,7 @@ export const STRATEGIES: StrategyDefinition[] = [
     ],
     tip: 'Expect a low win rate with a few large winners; payoff and profit factor matter more than win rate.',
     realtime: false,
+    recommendedDays: 180,
   },
 ];
 

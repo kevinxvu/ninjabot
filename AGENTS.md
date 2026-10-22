@@ -151,6 +151,7 @@ The backtest strategy is picked with a `switch` in `runBacktest`, not via `inter
 
 Two backtest details matter for correctness:
 - A `HighFrequencyStrategy` (the trailing stop) acts in `OnPartialCandle`, which only fires on resampled data, so `backtestSourceTimeframe` downloads 1h candles and `CSVFeed` groups them into the strategy timeframe.
+- `checkHistoryLength` rejects (400) a history shorter than the strategy's `WarmupPeriod` + 10 candles, so a run never ends with zero trades just for lack of data. `WarmupPeriod` must cover every indicator's lookback (plus one candle for crossovers); `TestWarmupCoversIndicators` enforces it. The UI's per-strategy `recommendedDays` (in `strategies.ts`) only sets the form default.
 - In backtest mode the order controller's wall-clock ticker is not started; `backtestCandles` calls `Controller.UpdateOrders()` after each candle that had pending orders, so limit/OCO fills are settled in simulated time.
 
 Because the chart and summary are global server state, only the latest backtest is viewable.

@@ -95,6 +95,12 @@ func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	strat := newBacktestStrategy(req, pairs)
+	if err := checkHistoryLength(req.Strategy, strat, req.Days); err != nil {
+		writeJSON(w, http.StatusBadRequest, backtestResponse{Error: err.Error()})
+		return
+	}
+
 	// Serialize: only one backtest at a time.
 	h.mu.Lock()
 	if h.running {
@@ -122,7 +128,7 @@ func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), backtestTimeout)
 	defer cancel()
 
-	if err := h.runBacktest(ctx, req, pairs); err != nil {
+	if err := h.runBacktest(ctx, req, pairs, strat); err != nil {
 		h.chart.Reset()
 		writeJSON(w, http.StatusInternalServerError, backtestResponse{Error: err.Error()})
 		return
@@ -131,7 +137,7 @@ func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, backtestResponse{Pairs: pairs})
 }
 
-func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []string) error {
+func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []string, strat strategy.Strategy) error {
 	// Create a temp directory to hold downloaded CSV files.
 	tmpDir, err := os.MkdirTemp("", "ninjabot-backtest-*")
 	if err != nil {
@@ -148,20 +154,6 @@ func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []
 
 	start := time.Now().AddDate(0, 0, -req.Days)
 	end := time.Now()
-
-	var strat strategy.Strategy
-	switch req.Strategy {
-	case "ocosell":
-		strat = new(strategies.OCOSell)
-	case "trailingstop":
-		strat = strategies.NewTrailing(pairs)
-	case "turtle":
-		strat = new(strategies.Turtle)
-	case "dca":
-		strat = strategies.NewDCA(req.Timeframe, req.DCAInterval, req.DCABuyAmount)
-	default:
-		strat = strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
-	}
 
 	sourceTimeframe := backtestSourceTimeframe(strat, req.Timeframe)
 	pairFeeds := make([]exfeed.PairFeed, 0, len(pairs))
@@ -235,6 +227,45 @@ func (h *Handler) runBacktest(ctx context.Context, req backtestRequest, pairs []
 	h.mu.Unlock()
 
 	return nil
+}
+
+// newBacktestStrategy builds the strategy of a normalised backtest request.
+func newBacktestStrategy(req backtestRequest, pairs []string) strategy.Strategy {
+	switch req.Strategy {
+	case "ocosell":
+		return new(strategies.OCOSell)
+	case "trailingstop":
+		return strategies.NewTrailing(pairs)
+	case "turtle":
+		return new(strategies.Turtle)
+	case "dca":
+		return strategies.NewDCA(req.Timeframe, req.DCAInterval, req.DCABuyAmount)
+	default:
+		return strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
+	}
+}
+
+// minTradableCandles is how many candles a backtest must have after the
+// strategy warm-up, so a run with no trades means "no signal" rather than
+// "not enough data".
+const minTradableCandles = 10
+
+// checkHistoryLength rejects a history too short for the strategy's warm-up.
+// The strategy only starts trading after WarmupPeriod candles, so a shorter
+// run would silently finish with zero trades.
+func checkHistoryLength(name string, strat strategy.Strategy, days int) error {
+	candle, ok := timeframeDuration(strat.Timeframe())
+	if !ok {
+		return nil
+	}
+	needed := strat.WarmupPeriod() + minTradableCandles
+	day := 24 * time.Hour
+	minDays := int((time.Duration(needed)*candle + day - 1) / day)
+	if days >= minDays {
+		return nil
+	}
+	return fmt.Errorf("%s on %s candles needs at least %d days of history (%d candles of indicator warm-up + %d to trade), got %d",
+		name, strat.Timeframe(), minDays, strat.WarmupPeriod(), minTradableCandles, days)
 }
 
 // backtestSourceTimeframe returns the candle interval to download for strat.

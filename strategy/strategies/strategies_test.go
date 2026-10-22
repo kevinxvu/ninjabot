@@ -220,3 +220,49 @@ func TestTrailingStop(t *testing.T) {
 	res = runStrategy(t, NewTrailing([]string{testPair}), "4h", 4*time.Hour, fourHour, 1000)
 	require.Equal(t, "BUY", res.sides())
 }
+
+// TestWarmupCoversIndicators checks that once the controller calls OnCandle
+// (after WarmupPeriod candles), every indicator the strategy reads is past its
+// lookback. Before that, go-talib pads the output with zeros, and a crossover
+// against zeros is a false signal.
+func TestWarmupCoversIndicators(t *testing.T) {
+	tt := []struct {
+		name     string
+		strategy strategy.Strategy
+		// previous is true when OnCandle also reads Last(1) (crossovers).
+		previous bool
+	}{
+		{"emacross default", NewCrossEMA("1h", 8, 21), true},
+		{"emacross custom", NewCrossEMA("1h", 20, 50), true},
+		{"ocosell", new(OCOSell), true},
+		{"trailingstop", NewTrailing([]string{testPair}), true},
+		{"turtle", new(Turtle), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			n := tc.strategy.WarmupPeriod()
+			df := &model.Dataframe{Pair: testPair, Metadata: make(map[string]model.Series[float64])}
+			for i := range n {
+				// A zig-zag keeps every oscillator away from exact zero.
+				p := 100 + float64(i%7)*1.5 - float64(i%3)
+				df.Close = append(df.Close, p)
+				df.Open = append(df.Open, p-0.5)
+				df.High = append(df.High, p+2)
+				df.Low = append(df.Low, p-2)
+				df.Volume = append(df.Volume, 1)
+				df.Time = append(df.Time, seriesStart.Add(time.Duration(i)*time.Hour))
+			}
+			tc.strategy.Indicators(df)
+
+			require.NotEmpty(t, df.Metadata)
+			for key, series := range df.Metadata {
+				require.Len(t, series, n, key)
+				require.NotZero(t, series.Last(0), "%s is still warming up on the first OnCandle", key)
+				if tc.previous {
+					require.NotZero(t, series.Last(1), "%s has no previous value for the crossover", key)
+				}
+			}
+		})
+	}
+}

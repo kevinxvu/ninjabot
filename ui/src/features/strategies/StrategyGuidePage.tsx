@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BookOpen, Check, Clock, Info, X } from 'lucide-react';
+import { ArrowRight, BookOpen, Check, Clock, History, Info, X } from 'lucide-react';
 import { SectionCard } from '@/components/common/SectionCard';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -99,6 +99,9 @@ function StrategyCard({ strategy, highlighted }: { strategy: StrategyDefinition;
             <Badge variant="muted">{strategy.style}</Badge>
             <Badge variant="muted">
               <Clock /> {strategy.fixedTimeframe ? `${strategy.fixedTimeframe} only` : 'Any timeframe'}
+            </Badge>
+            <Badge variant="muted">
+              <History /> Backtest {strategy.recommendedDays}+ days
             </Badge>
             <Badge variant={strategy.realtime ? 'success' : 'muted'}>
               {strategy.realtime ? 'Backtest + realtime signals' : 'Backtest only'}

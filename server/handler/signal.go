@@ -2,10 +2,14 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/rodrigo-brito/ninjabot/exchange"
+	"github.com/rodrigo-brito/ninjabot/internal/registry"
 	"github.com/rodrigo-brito/ninjabot/model"
 )
 
@@ -22,8 +26,8 @@ func (h *Handler) HandleStartRealtimeSignal(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if req.Pair == "" || req.Timeframe == "" || req.Strategy == "" || req.InitialAsset == "" || req.InitialAmount <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing required fields"})
+	if err := normalizeStartRequest(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -121,14 +125,12 @@ func (h *Handler) HandleListRealtimeSignals(w http.ResponseWriter, r *http.Reque
 	}
 
 	for _, sess := range sessions {
-		h.signalMgr.mu.Lock()
-		if _, ok := h.signalMgr.bots[sess.ID]; ok {
+		if h.signalMgr.IsRunning(sess.ID) {
 			sess.Status = "running"
 		} else if sess.Status == "running" {
 			sess.Status = "stopped"
 			h.db.UpdateSession(sess)
 		}
-		h.signalMgr.mu.Unlock()
 	}
 
 	writeJSON(w, http.StatusOK, sessions)
@@ -191,11 +193,9 @@ func (h *Handler) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.signalMgr.mu.Lock()
-	if _, ok := h.signalMgr.bots[sessionID]; ok {
+	if h.signalMgr.IsRunning(sessionID) {
 		session.Status = "running"
 	}
-	h.signalMgr.mu.Unlock()
 
 	if session.Status == "running" {
 		balances, err := h.signalMgr.GetSessionBalances(sessionID)
@@ -218,4 +218,41 @@ func (h *Handler) HandleGetRealtimeSignal(w http.ResponseWriter, r *http.Request
 	session.Events = sessionEventsForDisplay(session)
 
 	writeJSON(w, http.StatusOK, session)
+}
+
+// normalizeStartRequest trims and validates a start request and fills the
+// strategy defaults, mirroring the backtest validation.
+func normalizeStartRequest(req *StartSignalRequest) error {
+	req.Pair = strings.ToUpper(strings.TrimSpace(req.Pair))
+	req.Timeframe = strings.TrimSpace(req.Timeframe)
+	req.Strategy = strings.TrimSpace(req.Strategy)
+	req.InitialAsset = strings.ToUpper(strings.TrimSpace(req.InitialAsset))
+
+	if req.Pair == "" || req.Timeframe == "" || req.Strategy == "" || req.InitialAsset == "" || req.InitialAmount <= 0 {
+		return errors.New("missing required fields")
+	}
+	if asset, _ := exchange.SplitAssetQuote(req.Pair); asset == "" {
+		return fmt.Errorf("unsupported pair %q", req.Pair)
+	}
+	if _, ok := timeframeDuration(req.Timeframe); !ok {
+		return fmt.Errorf("invalid timeframe %q", req.Timeframe)
+	}
+	if !slices.Contains(registry.Registered(), req.Strategy) {
+		return fmt.Errorf("unknown strategy %q", req.Strategy)
+	}
+
+	if req.Strategy != "emacross" {
+		req.FastPeriod, req.SlowPeriod = 0, 0
+		return nil
+	}
+	if req.FastPeriod <= 0 {
+		req.FastPeriod = 8
+	}
+	if req.SlowPeriod <= 0 {
+		req.SlowPeriod = 21
+	}
+	if req.FastPeriod >= req.SlowPeriod {
+		return errors.New("fast_period must be less than slow_period")
+	}
+	return nil
 }

@@ -43,3 +43,58 @@ func TestRealtimeChartEndTimeUsesNowForStoppedSession(t *testing.T) {
 
 	require.Equal(t, now.Add(time.Minute), end)
 }
+
+func TestBuildSessionStrategyUsesStoredPeriods(t *testing.T) {
+	session := &model.Session{Strategy: "emacross", Timeframe: "1h", FastPeriod: 5, SlowPeriod: 50}
+
+	s, ok := buildSessionStrategy(session).(*strategies.CrossEMA)
+
+	require.True(t, ok)
+	require.Equal(t, 5, s.FastPeriod)
+	require.Equal(t, 50, s.SlowPeriod)
+}
+
+func TestNormalizeStartRequest(t *testing.T) {
+	valid := StartSignalRequest{Pair: " btcusdt ", Timeframe: "1h", Strategy: "emacross", InitialAsset: "usdt", InitialAmount: 100}
+
+	tt := []struct {
+		name    string
+		modify  func(r *StartSignalRequest)
+		wantErr string
+		check   func(t *testing.T, r StartSignalRequest)
+	}{
+		{
+			name:   "fills defaults and normalises",
+			modify: func(*StartSignalRequest) {},
+			check: func(t *testing.T, r StartSignalRequest) {
+				require.Equal(t, "BTCUSDT", r.Pair)
+				require.Equal(t, "USDT", r.InitialAsset)
+				require.Equal(t, 8, r.FastPeriod)
+				require.Equal(t, 21, r.SlowPeriod)
+			},
+		},
+		{name: "missing amount", modify: func(r *StartSignalRequest) { r.InitialAmount = 0 }, wantErr: "missing required fields"},
+		{name: "unknown pair", modify: func(r *StartSignalRequest) { r.Pair = "FOOBAR" }, wantErr: "unsupported pair"},
+		{name: "bad timeframe", modify: func(r *StartSignalRequest) { r.Timeframe = "abc" }, wantErr: "invalid timeframe"},
+		{name: "unknown strategy", modify: func(r *StartSignalRequest) { r.Strategy = "nope" }, wantErr: "unknown strategy"},
+		{
+			name:    "fast not below slow",
+			modify:  func(r *StartSignalRequest) { r.FastPeriod, r.SlowPeriod = 30, 20 },
+			wantErr: "fast_period must be less than slow_period",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			req := valid
+			tc.modify(&req)
+			err := normalizeStartRequest(&req)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			tc.check(t, req)
+		})
+	}
+}

@@ -11,6 +11,8 @@ type Session struct {
 	Timeframe     string         `json:"timeframe"`
 	InitialAsset  string         `json:"initial_asset"`
 	InitialAmount float64        `json:"initial_amount"`
+	FastPeriod    int            `json:"fast_period"`
+	SlowPeriod    int            `json:"slow_period"`
 	CreatedAt     time.Time      `json:"created_at"`
 	UpdatedAt     time.Time      `json:"updated_at"`
 	Orders        []Order        `json:"orders" gorm:"foreignKey:SessionID"`

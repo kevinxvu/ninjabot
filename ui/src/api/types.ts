@@ -192,6 +192,9 @@ export interface SignalSession {
   timeframe: string;
   initial_asset: string;
   initial_amount: number;
+  /** EMA periods for emacross sessions (0 means the strategy default; older sessions). */
+  fast_period?: number;
+  slow_period?: number;
   created_at: Timestamp;
   updated_at: Timestamp;
   orders?: Order[] | null;

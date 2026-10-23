@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"os/signal"
+	"syscall"
 
 	"github.com/rodrigo-brito/ninjabot/plot"
 	plotindicator "github.com/rodrigo-brito/ninjabot/plot/indicator"
@@ -29,7 +31,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := srv.Start(context.Background(), cfg.Port); err != nil {
+	// Stop on SIGINT/SIGTERM (docker stop): as PID 1 in a container the
+	// process would otherwise ignore SIGTERM until it is killed.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := srv.Start(ctx, cfg.Port); err != nil {
 		log.Fatal(err)
 	}
 }

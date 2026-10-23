@@ -5,13 +5,24 @@ GOBIN ?= $(shell go env GOPATH)/bin
 PKG   ?= ./...
 RUN   ?=
 
+# Docker settings, e.g. make docker-run DOCKER_PORT=9090
+IMAGE       ?= ninjabot
+TAG         ?= latest
+CONTAINER   ?= ninjabot
+DOCKER_PORT ?= 8080
+DATA_VOLUME ?= ninjabot-data
+# Pass .env (API keys, ...) to the container when it exists.
+ENV_FILE    := $(if $(wildcard .env),--env-file .env,)
+
 .DEFAULT_GOAL := help
 
 .PHONY: help setup deps dev start build build-all install clean \
 	ui-install ui-dev ui-build ui-lint ui-format ui-format-check ui-typecheck ui-check \
-	fmt vet tidy generate lint check check-all \
+	vendor fmt vet tidy generate lint check check-all \
 	test test-pkg test-run cover cover-html \
-	run-backtest run-webbacktest run-paper run-spot run-futures release
+	run-backtest run-webbacktest run-paper run-spot run-futures release \
+	docker-build docker-image docker-up docker-run docker-stop docker-restart \
+	docker-logs docker-shell docker-ps docker-clean docker-volume-rm
 
 ## help: Show available make targets
 help:
@@ -28,6 +39,10 @@ setup: deps ui-install ui-build
 ## deps: Download Go module dependencies
 deps:
 	go mod download
+
+## vendor: Copy Go dependencies into vendor/ (used by the Docker build)
+vendor:
+	go mod vendor
 
 ## ── Build & Run ──────────────────────────────────────────────────────────────
 
@@ -174,3 +189,51 @@ run-futures:
 ## release: Build a snapshot release with goreleaser (no publish)
 release:
 	goreleaser build --snapshot
+
+## ── Docker ───────────────────────────────────────────────────────────────────
+
+## docker-build: Build the UI and vendor/ on the host, then the image IMAGE:TAG
+docker-build: ui-build vendor docker-image
+
+## docker-image: Build the image from the current ui/dist and vendor/ (no host rebuild)
+docker-image:
+	docker build -t $(IMAGE):$(TAG) .
+
+## docker-up: Build the image and (re)start the container
+docker-up: docker-build docker-run
+
+## docker-run: (Re)start the container on DOCKER_PORT, data in volume DATA_VOLUME, .env if present
+docker-run:
+	-@docker rm -f $(CONTAINER) >/dev/null 2>&1
+	docker run -d --name $(CONTAINER) --restart unless-stopped \
+		-p $(DOCKER_PORT):8080 -v $(DATA_VOLUME):/app/data $(ENV_FILE) $(IMAGE):$(TAG)
+	@echo "TradingBot → http://localhost:$(DOCKER_PORT)"
+
+## docker-stop: Stop and remove the container (keeps the data volume)
+docker-stop:
+	-docker stop $(CONTAINER)
+	-docker rm $(CONTAINER)
+
+## docker-restart: Restart the running container
+docker-restart:
+	docker restart $(CONTAINER)
+
+## docker-logs: Follow the container logs
+docker-logs:
+	docker logs -f --tail 200 $(CONTAINER)
+
+## docker-shell: Open a shell inside the running container
+docker-shell:
+	docker exec -it $(CONTAINER) sh
+
+## docker-ps: Show the container status and health
+docker-ps:
+	docker ps -a --filter name=^/$(CONTAINER)$$ --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+## docker-clean: Remove the container and the image (keeps the data volume)
+docker-clean: docker-stop
+	-docker rmi $(IMAGE):$(TAG)
+
+## docker-volume-rm: DELETE the data volume (sessions, orders, Telegram settings)
+docker-volume-rm:
+	docker volume rm $(DATA_VOLUME)

@@ -54,6 +54,18 @@ Run commands from the repository root: the server reads `exchange/pairs.json` an
 The Go server embeds the built UI (`ui/dist`, not committed). On a fresh clone run `make setup` before any
 `go build`, `go run` or `go test`, and after changing UI code run `make ui-build` and restart the server.
 
+### Docker
+
+The image embeds the UI built on your machine and builds the server from `vendor/`, so it downloads nothing:
+
+```bash
+make docker-up      # build ui/dist + vendor/ on the host, build the image, start the container
+make docker-logs    # follow the logs; docker-stop, docker-ps, docker-shell: see make help
+```
+
+The app runs on http://localhost:8080 (`DOCKER_PORT=9090` to change it). Sessions and settings are kept in the
+`ninjabot-data` volume, and a `.env` file at the repository root is passed to the container when it exists.
+
 ### Configuration
 
 All settings are optional environment variables:
@@ -61,6 +73,7 @@ All settings are optional environment variables:
 | Variable | Used for |
 |---|---|
 | `PORT` | HTTP port (default `8080`) |
+| `DB_PATH` | SQLite file for realtime sessions and settings (default `ninjabot.db`; `/app/data/ninjabot.db` in Docker) |
 | `API_KEY`, `API_SECRET` | Binance credentials, only for the Dashboard portfolio card. Market data, backtests and realtime signals use public endpoints. |
 | `TELEGRAM_TOKEN`, `TELEGRAM_USER` | Telegram for the framework examples. The web app configures Telegram in its Settings page. |
 

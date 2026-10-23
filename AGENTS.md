@@ -67,10 +67,13 @@ Run everything from the **repository root**. The server reads `exchange/pairs.js
 | UI type-check only | `make ui-typecheck` (= `cd ui && npx tsc -b`) |
 | Full UI gate | `make ui-check` (typecheck + lint + format check + build) |
 | Clean | `make clean` (removes `bin/` and coverage files; keeps `ui/dist` and `ninjabot.db`) |
+| Docker image / run | `make docker-build` (host `ui-build` + `vendor`, then `docker build`), `make docker-run`, `make docker-up` (both); `docker-logs`, `docker-stop`, `docker-ps`, `make help` for the rest |
 
 **Important:** `ui/ui.go` embeds `ui/dist`, which is git-ignored. On a fresh clone, run `make setup` (or `make ui-install && make ui-build`) before any `go build`/`go run`/`go test ./...`, or the `ui` package fails to compile. After changing UI code, rebuild it (`make ui-build`) and restart the Go server, because the server serves the embedded build. `make ui-dev` on :5173 does **not** proxy `/api` or `/ws` to the Go server, so check UI changes on :8080.
 
-Optional environment variables (`server/config.go`): `API_KEY`, `API_SECRET` (Binance; only needed for the Dashboard portfolio card), `TELEGRAM_TOKEN`, `TELEGRAM_USER`, `PORT`.
+Optional environment variables (`server/config.go`): `API_KEY`, `API_SECRET` (Binance; only needed for the Dashboard portfolio card), `TELEGRAM_TOKEN`, `TELEGRAM_USER`, `PORT`, `DB_PATH` (SQLite file, default `ninjabot.db`).
+
+Docker: the `Dockerfile` downloads nothing to build the binary. The UI is built on the host and `ui/dist` is copied in (embedded by `ui/ui.go`), and Go dependencies come from `vendor/` (git-ignored, refreshed by `make vendor`), so build through `make docker-build`. The runtime image is Alpine, runs as a non-root user, keeps `ninjabot.db` in the `/app/data` volume (`DB_PATH`), passes `.env` to the container when it exists, and stops promptly on SIGTERM.
 
 Known baseline: `go test ./...` currently fails one test, `TestMarketOrder` in `ninjabot_test.go` (expected equity mismatch). This failure is older than the UI refactor. Don't treat it as a regression you caused, but don't hide it either.
 

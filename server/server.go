@@ -44,7 +44,7 @@ func NewServer(chart *plot.Chart, cfg Config) (*Server, error) {
 	}
 	pairsData = tradablePairs(pairsData, isTrading)
 
-	dbStorage, err := storagesqlite.FromSQL(sqlite.Open("ninjabot.db"), &gorm.Config{})
+	dbStorage, err := storagesqlite.FromSQL(sqlite.Open(cfg.DBPath), &gorm.Config{})
 	if err != nil {
 		fmt.Printf("Warning: Could not initialize SQLite database: %v\n", err)
 	}

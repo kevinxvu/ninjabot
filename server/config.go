@@ -11,6 +11,8 @@ type Config struct {
 	APISecret     string
 	TelegramToken string
 	TelegramUser  int
+	// DBPath is the SQLite file holding realtime sessions and settings.
+	DBPath string
 }
 
 func LoadConfig() Config {
@@ -21,6 +23,11 @@ func LoadConfig() Config {
 		APISecret:     os.Getenv("API_SECRET"),
 		TelegramToken: os.Getenv("TELEGRAM_TOKEN"),
 		TelegramUser:  user,
+		DBPath:        "ninjabot.db",
+	}
+
+	if path := os.Getenv("DB_PATH"); path != "" {
+		cfg.DBPath = path
 	}
 
 	if portStr, ok := os.LookupEnv("PORT"); ok {

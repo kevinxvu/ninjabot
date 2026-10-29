@@ -13,6 +13,8 @@ type backtestRequest struct {
 	SlowPeriod     int     `json:"slow_period"`
 	DCAInterval    int     `json:"dca_interval"`
 	DCABuyAmount   float64 `json:"dca_buy_amount"`
+	FibPivot       int     `json:"fib_pivot"`
+	FibLevel       float64 `json:"fib_level"`
 }
 
 type backtestResponse struct {

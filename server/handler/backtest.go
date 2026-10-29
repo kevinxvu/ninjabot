@@ -56,7 +56,7 @@ func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 	switch req.Strategy {
 	case "ocosell", "dca":
 		req.Timeframe = "1d"
-	case "trailingstop", "turtle":
+	case "trailingstop", "turtle", "fibonacci":
 		req.Timeframe = "4h"
 	default: // emacross
 		if req.Timeframe == "" {
@@ -92,6 +92,24 @@ func (h *Handler) HandleBacktest(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.DCABuyAmount <= 0 {
 			req.DCABuyAmount = 100
+		}
+	}
+
+	// Validate Fibonacci parameters if strategy is fibonacci
+	if req.Strategy == "fibonacci" {
+		if req.FibPivot <= 0 {
+			req.FibPivot = strategies.FibDefaultPivot
+		}
+		if req.FibLevel <= 0 {
+			req.FibLevel = strategies.FibDefaultLevel
+		}
+		if req.FibPivot < 2 || req.FibPivot > 10 {
+			writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "fib_pivot must be between 2 and 10"})
+			return
+		}
+		if req.FibLevel != 0.5 && req.FibLevel != 0.618 {
+			writeJSON(w, http.StatusBadRequest, backtestResponse{Error: "fib_level must be 0.5 or 0.618"})
+			return
 		}
 	}
 
@@ -240,6 +258,8 @@ func newBacktestStrategy(req backtestRequest, pairs []string) strategy.Strategy 
 		return new(strategies.Turtle)
 	case "dca":
 		return strategies.NewDCA(req.Timeframe, req.DCAInterval, req.DCABuyAmount)
+	case "fibonacci":
+		return strategies.NewFibonacci(req.FibPivot, req.FibLevel)
 	default:
 		return strategies.NewCrossEMA(req.Timeframe, req.FastPeriod, req.SlowPeriod)
 	}
@@ -448,21 +468,27 @@ func computeSummary(bot *ninjabot.NinjaBot, wallet *expaperwallet.PaperWallet, r
 
 	// Build strategy info string
 	strategyTitle := "EMA Crossover"
-	if req.Strategy == "ocosell" {
+	switch req.Strategy {
+	case "ocosell":
 		strategyTitle = "OCO Sell (Stochastic)"
-	} else if req.Strategy == "trailingstop" {
+	case "trailingstop":
 		strategyTitle = "Trailing Stop"
-	} else if req.Strategy == "turtle" {
+	case "turtle":
 		strategyTitle = "Turtle Trading"
-	} else if req.Strategy == "dca" {
+	case "dca":
 		strategyTitle = "DCA (Dollar Cost Averaging)"
+	case "fibonacci":
+		strategyTitle = "Fibonacci Pullback"
 	}
 
 	strategyInfo := fmt.Sprintf("%s │ Timeframe: %s │ History: %d days", strategyTitle, req.Timeframe, req.Days)
-	if req.Strategy == "emacross" {
+	switch req.Strategy {
+	case "emacross":
 		strategyInfo = fmt.Sprintf("%s (Fast=%d, Slow=%d) │ Timeframe: %s │ History: %d days", strategyTitle, req.FastPeriod, req.SlowPeriod, req.Timeframe, req.Days)
-	} else if req.Strategy == "dca" {
+	case "dca":
 		strategyInfo = fmt.Sprintf("%s (Interval=%d days, Buy=%.2f USDT) │ Timeframe: %s │ History: %d days", strategyTitle, req.DCAInterval, req.DCABuyAmount, req.Timeframe, req.Days)
+	case "fibonacci":
+		strategyInfo = fmt.Sprintf("%s (Pivot=%d, Entry=%g) │ Timeframe: %s │ History: %d days", strategyTitle, req.FibPivot, req.FibLevel, req.Timeframe, req.Days)
 	}
 
 	baseCoin := "USDT"

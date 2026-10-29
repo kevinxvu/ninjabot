@@ -32,6 +32,8 @@ const DEFAULT_CONFIG: BacktestRequest = {
   slow_period: 21,
   dca_interval: 7,
   dca_buy_amount: 100,
+  fib_pivot: 5,
+  fib_level: 0.618,
 };
 
 /** Restores the last submitted configuration; `strategy` (from the guide's links) overrides the saved one. */

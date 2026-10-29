@@ -15,6 +15,8 @@ export interface StrategyValues {
   slow_period: number;
   dca_interval?: number;
   dca_buy_amount?: number;
+  fib_pivot?: number;
+  fib_level?: number;
 }
 
 interface StrategyFieldsProps<T extends StrategyValues> {
@@ -125,6 +127,45 @@ export function StrategyFields<T extends StrategyValues>({
                 value={values.dca_buy_amount ?? ''}
                 onChange={numberChange('dca_buy_amount')}
               />
+            </FormField>
+          </div>
+        )}
+
+        {strategy?.params === 'fib' && (
+          <div className="grid grid-cols-2 gap-5">
+            <FormField
+              label="Pivot Length (Candles)"
+              htmlFor="fib_pivot"
+              hint="A swing low must be the lowest low this many candles on each side."
+            >
+              <Input
+                id="fib_pivot"
+                type="number"
+                min={2}
+                max={10}
+                required
+                className="bg-card"
+                value={values.fib_pivot ?? ''}
+                onChange={numberChange('fib_pivot')}
+              />
+            </FormField>
+            <FormField
+              label="Entry Level"
+              htmlFor="fib_level"
+              hint="Retracement where the pullback is bought."
+            >
+              <Select
+                value={String(values.fib_level ?? 0.618)}
+                onValueChange={(value) => onChange({ fib_level: Number(value) })}
+              >
+                <SelectTrigger id="fib_level" className="w-full bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0.5">0.5</SelectItem>
+                  <SelectItem value="0.618">0.618</SelectItem>
+                </SelectContent>
+              </Select>
             </FormField>
           </div>
         )}

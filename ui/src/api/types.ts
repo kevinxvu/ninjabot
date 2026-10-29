@@ -119,6 +119,8 @@ export interface BacktestRequest {
   slow_period: number;
   dca_interval: number;
   dca_buy_amount: number;
+  fib_pivot: number;
+  fib_level: number;
 }
 
 export interface PairStat {

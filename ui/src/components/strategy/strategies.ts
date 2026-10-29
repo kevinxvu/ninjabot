@@ -1,4 +1,4 @@
-export type StrategyParams = 'ema' | 'dca' | 'none';
+export type StrategyParams = 'ema' | 'dca' | 'fib' | 'none';
 
 export interface StrategyDefinition {
   value: string;
@@ -136,6 +136,30 @@ export const STRATEGIES: StrategyDefinition[] = [
     realtime: false,
     recommendedDays: 180,
   },
+  {
+    value: 'fibonacci',
+    label: 'Fibonacci Pullback',
+    params: 'fib',
+    fixedTimeframe: '4h',
+    style: 'Pullback in a trend',
+    summary:
+      'Buys a pullback to the 0.5 or 0.618 Fibonacci retracement of the latest up-leg, with a target at the swing high and a stop at 0.786.',
+    entry:
+      'The up-leg starts at a confirmed swing low (the lowest low of the pivot length on each side) and ends at the highest high since; it must span at least 3 ATR(14). On a closed 4h candle above the 200 EMA, within 20 candles of the swing high, this or the previous candle reached the entry level without breaking 0.786, and the candle closed green above it.',
+    exit: 'An OCO order: take profit at the swing high or stop-loss at the 0.786 retracement, whichever is hit first.',
+    sizing: 'Buys with the whole quote balance; one trade at a time per pair and one trade per up-leg.',
+    bestFor: [
+      'Up-trends that move in waves with clear pullbacks',
+      'Defined risk: the stop and target come from the chart before entering',
+    ],
+    avoidWhen: [
+      'Down-trends or long ranges below the 200 EMA: it stays out',
+      'Sharp V-shaped moves that never pull back to the entry level',
+    ],
+    tip: 'The chart draws the levels of the leg known at each candle: they stay flat while the leg holds, step up on a new high and disappear when the swing low breaks. Entries are strict: expect few trades and compare 0.5 with 0.618.',
+    realtime: false,
+    recommendedDays: 180,
+  },
 ];
 
 /** Strategies the realtime signal engine can run. */
@@ -151,5 +175,6 @@ export const STRATEGY_PICKS: { situation: string; strategy: string }[] = [
   { situation: 'Strong trend, you want to protect profits', strategy: 'trailingstop' },
   { situation: 'Range that may break out into a big move', strategy: 'turtle' },
   { situation: 'Price swinging up and down in a range', strategy: 'ocosell' },
+  { situation: 'Up-trend with regular pullbacks', strategy: 'fibonacci' },
   { situation: 'Long-term buying, no market timing', strategy: 'dca' },
 ];

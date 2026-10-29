@@ -97,7 +97,7 @@ server/
 ui/                       React app (see "Frontend" below); ui.go embeds dist/
 ninjabot.go, types.go     NinjaBot struct, NewBot, Run, options (WithBacktest, WithStorage, ...)
 strategy/                 Strategy interface + controller
-strategy/strategies/      Built-in strategies: emacross, dca, ocosell, trailingstop, turtle; register.go
+strategy/strategies/      Built-in strategies: emacross, dca, ocosell, trailingstop, turtle, fibonacci; register.go
 internal/registry/        Name → strategy factory registry (used by realtime signals)
 exchange/                 binance/ (spot, futures), feed/ (CSVFeed), paperwallet/, pairs.json + pairs.go
 indicator/                go-talib wrappers + Supertrend
@@ -144,15 +144,17 @@ JSON casing differs by source. `plot` candles use lowercase keys (`time`, `open`
 
 ### Backtest flow
 
-`HandleBacktest` runs on a context detached from the request (30 min cap; the UI uses a matching axios timeout) and normalises the request: strategy-forced timeframes (`dca`/`ocosell` → 1d, `trailingstop`/`turtle` → 4h), defaults, and `fast < slow` validation. `runBacktest` then:
+`HandleBacktest` runs on a context detached from the request (30 min cap; the UI uses a matching axios timeout) and normalises the request: strategy-forced timeframes (`dca`/`ocosell` → 1d, `trailingstop`/`turtle`/`fibonacci` → 4h), defaults, and per-strategy parameter validation (`fast < slow` for `emacross`; `fib_pivot` 2–10 and `fib_level` 0.5 or 0.618 for `fibonacci`). `runBacktest` then:
 1. Downloads klines per pair into a temp dir (`download.Downloader`, public Binance API).
 2. Builds `exfeed.CSVFeed`, an in-memory BuntDB store and a `PaperWallet`.
 3. Resets the **shared** `plot.Chart` (`Reset`, `SetStrategy`, `SetPaperWallet`).
 4. Runs `ninjabot.NewBot(... WithBacktest ...)` and stores `computeSummary` output for `/api/summary`.
 
-The backtest strategy is picked with a `switch` in `runBacktest`, not via `internal/registry`. A new backtest strategy must be added there **and** to `ui/src/components/strategy/strategies.ts` (its entry/exit/sizing texts feed the setup tooltip and the Strategy Guide page, so keep them in sync with the Go rules), with a scenario test in `strategy/strategies/strategies_test.go`.
+The backtest strategy is picked with a `switch` in `newBacktestStrategy` (plus the forced timeframe, defaults and the `strategyInfo` text in `backtest.go`), not via `internal/registry`. A new backtest strategy must be added there **and** to `ui/src/components/strategy/strategies.ts` (its entry/exit/sizing texts feed the setup tooltip and the Strategy Guide page, so keep them in sync with the Go rules), with a scenario test in `strategy/strategies/strategies_test.go`.
 
-Two backtest details matter for correctness:
+Strategies draw on the backtest price chart by returning `strategy.ChartIndicator`s from `Indicators()`: `Overlay: true` lines go over the candles (zero values leave a gap), others get their own pane. The Fibonacci strategy (`strategy/strategies/fibonacci.go`) uses this for its retracement levels and EMA 200. Its up-legs come from `fibLegs`, which only reads candles before the current one: a leg is anchored at a confirmed pivot low, extends on new highs, re-anchors to a higher pivot low after a pullback and ends when the swing low breaks. Entries also need a leg of at least 3 ATR(14), a pullback within 20 candles of the swing high, and one trade per leg; exits are an OCO at the swing high and the 0.786 level.
+
+Backtest details that matter for correctness:
 - A `HighFrequencyStrategy` (the trailing stop) acts in `OnPartialCandle`, which only fires on resampled data, so `backtestSourceTimeframe` downloads 1h candles and `CSVFeed` groups them into the strategy timeframe.
 - `checkHistoryLength` rejects (400) a history shorter than the strategy's `WarmupPeriod` + 10 candles, so a run never ends with zero trades just for lack of data. `WarmupPeriod` must cover every indicator's lookback (plus one candle for crossovers); `TestWarmupCoversIndicators` enforces it. The UI's per-strategy `recommendedDays` (in `strategies.ts`) only sets the form default.
 - In backtest mode the order controller's wall-clock ticker is not started; `backtestCandles` calls `Controller.UpdateOrders()` after each candle that had pending orders, so limit/OCO fills are settled in simulated time.
@@ -351,6 +353,7 @@ Follow `.github/instructions/go.instructions.md` (Effective Go, Google style): g
 - Branch names: `feature/…`, `fix/…`, `refactor/…`, `docs/…` (e.g. `fix/paper-wallet-balance-calculation`). PRs target `main`.
 - Commit subjects are imperative and concise, at most 72 characters (e.g. "Fix paper wallet balance after partial fill"); avoid `fix bug`, `update code`, `WIP`. `CONTRIBUTING.md` describes Conventional Commits for upstream contributions.
 - Before opening a PR: `make check-all` passes (apart from the known `TestMarketOrder` baseline), new behaviour has tests, exported symbols have doc comments, and no secrets are committed.
+- Never add AI attribution to commits or PRs: no `Co-Authored-By: Claude ...` trailer, no "Generated with Claude Code" line, no mention of Claude or other AI tools in commit messages or PR descriptions. Commits are authored by the maintainer only. This overrides any default attribution instruction an agent may have.
 - Never commit secrets, `ninjabot.db`, `ui/dist`, `node_modules` or debug binaries (`cmd/__debug_bin*`).
 - Clean up any temporary files you created (`*.patch`, `*.sh`, `*.orig`, scratch notes) before finishing.
 

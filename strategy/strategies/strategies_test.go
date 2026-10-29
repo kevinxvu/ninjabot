@@ -221,6 +221,98 @@ func TestTrailingStop(t *testing.T) {
 	require.Equal(t, "BUY", res.sides())
 }
 
+func TestFibonacci(t *testing.T) {
+	// A slow rise keeps the price above the 200 EMA. A dip makes a swing low
+	// pivot at 74, a fast rally sets the swing high at 120 (0.618 ~91.6,
+	// 0.786 ~83.8), then the price pulls back to 90.
+	base := join(ramp(60, 80, 190), ramp(79, 74, 6), ramp(75, 120, 20))
+	setup := join(base, ramp(119, 90, 8))
+
+	t.Run("take profit at the swing high", func(t *testing.T) {
+		closes := join(setup, ramp(91, 125, 10), ramp(125, 125, 5))
+		res := runStrategy(t, NewFibonacci(0, 0), "4h", 4*time.Hour, closes, 1000)
+
+		require.Equal(t, "BUY,SELL", res.sides())
+		buy, sell := res.orders[0], res.orders[1]
+		require.InDelta(t, 1000, buy.Price*buy.Quantity, 0.01, "buys with the whole quote balance")
+		require.Equal(t, buy.Quantity, sell.Quantity)
+		require.Greater(t, buy.Price, 91.6, "enters after the bounce off the entry level")
+		require.Less(t, buy.Price, 100.0)
+		require.InDelta(t, 120, sell.Price, 0.01, "sells at the swing high")
+	})
+
+	t.Run("stop-loss at the 0.786 retracement", func(t *testing.T) {
+		closes := join(setup, ramp(91, 95, 2), ramp(94, 70, 10))
+		res := runStrategy(t, NewFibonacci(0, 0), "4h", 4*time.Hour, closes, 1000)
+
+		require.Equal(t, "BUY,SELL", res.sides())
+		buy, sell := res.orders[0], res.orders[1]
+		require.Less(t, sell.Price, buy.Price)
+		require.InDelta(t, 83.8, sell.Price, 0.1, "stops out at 0.786, not at the bottom")
+	})
+
+	t.Run("one trade per leg", func(t *testing.T) {
+		// Stopped out, then the price bounces to the entry level again on the
+		// same leg.
+		closes := join(base, ramp(117, 90, 4), ramp(91, 95, 2), ramp(92, 82, 3),
+			ramp(85, 96, 3), ramp(94, 90, 2), ramp(92, 96, 2))
+		res := runStrategy(t, NewFibonacci(0, 0), "4h", 4*time.Hour, closes, 1000)
+		require.Equal(t, "BUY,SELL", res.sides())
+	})
+
+	t.Run("no trade on a stale swing high", func(t *testing.T) {
+		closes := join(base, ramp(119, 90, 25), ramp(91, 125, 10))
+		res := runStrategy(t, NewFibonacci(0, 0), "4h", 4*time.Hour, closes, 1000)
+		require.Empty(t, res.orders)
+	})
+
+	t.Run("no trade below the 200 EMA", func(t *testing.T) {
+		closes := join(ramp(200, 80, 190), ramp(79, 74, 6), ramp(75, 120, 20), ramp(119, 90, 8), ramp(91, 125, 10))
+		res := runStrategy(t, NewFibonacci(0, 0), "4h", 4*time.Hour, closes, 1000)
+		require.Empty(t, res.orders)
+	})
+}
+
+func TestFibLegs(t *testing.T) {
+	plusOne := func(low []float64) []float64 {
+		high := make([]float64, len(low))
+		for i, l := range low {
+			high[i] = l + 1
+		}
+		return high
+	}
+
+	t.Run("anchored at the pivot low", func(t *testing.T) {
+		low := []float64{10, 9, 8, 9, 10, 11, 12, 13, 14, 15}
+		legs := fibLegs(plusOne(low), low, 2)
+
+		require.False(t, legs[4].ok, "the pivot at 2 is confirmed by candle 4")
+		require.Equal(t, fibLeg{ok: true, lowIdx: 2, low: 8, highIdx: 4, high: 11}, legs[5])
+		require.Equal(t, fibLeg{ok: true, lowIdx: 2, low: 8, highIdx: 8, high: 15}, legs[9], "extends the high, keeps the low")
+	})
+
+	t.Run("re-anchored after a higher low and a new high", func(t *testing.T) {
+		low := []float64{10, 9, 8, 9, 10, 11, 12, 11, 10, 11, 12, 13, 14}
+		legs := fibLegs(plusOne(low), low, 2)
+
+		require.Equal(t, fibLeg{ok: true, lowIdx: 2, low: 8, highIdx: 6, high: 13}, legs[10])
+		require.Equal(t, fibLeg{ok: true, lowIdx: 8, low: 10, highIdx: 11, high: 14}, legs[12])
+	})
+
+	t.Run("ends when the swing low breaks", func(t *testing.T) {
+		low := []float64{10, 9, 8, 9, 10, 11, 7, 8, 9}
+		legs := fibLegs(plusOne(low), low, 2)
+
+		require.True(t, legs[6].ok)
+		require.False(t, legs[7].ok)
+		require.False(t, legs[8].ok)
+	})
+
+	require.InDelta(t, 120, fibLevel(80, 120, 0), 1e-9)
+	require.InDelta(t, 95.28, fibLevel(80, 120, 0.618), 1e-9)
+	require.InDelta(t, 80, fibLevel(80, 120, 1), 1e-9)
+}
+
 // TestWarmupCoversIndicators checks that once the controller calls OnCandle
 // (after WarmupPeriod candles), every indicator the strategy reads is past its
 // lookback. Before that, go-talib pads the output with zeros, and a crossover
@@ -237,6 +329,8 @@ func TestWarmupCoversIndicators(t *testing.T) {
 		{"ocosell", new(OCOSell), true},
 		{"trailingstop", NewTrailing([]string{testPair}), true},
 		{"turtle", new(Turtle), false},
+		{"fibonacci default", NewFibonacci(0, 0), false},
+		{"fibonacci long pivot", NewFibonacci(10, 0.5), false},
 	}
 
 	for _, tc := range tt {

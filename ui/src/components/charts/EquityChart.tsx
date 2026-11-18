@@ -1,15 +1,27 @@
 import { useMemo } from 'react';
+import { COMPACT_QUERY, TOUCH_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Annotations, Data, Shape } from 'plotly.js';
 import type { ChartData } from '@/api/types';
 import { formatNumber } from '@/lib/format';
 import { formatPlotlyLocalDate, toEpochMs } from '@/lib/time';
 import { Plot } from './Plot';
-import { CHART_COLORS, FONT_FAMILY, INTERACTIVE_CONFIG, baseTimeLayout } from './theme';
+import {
+  CHART_COLORS,
+  FONT_FAMILY,
+  INTERACTIVE_CONFIG,
+  baseTimeLayout,
+  compactLayout,
+  defaultDragmode,
+} from './theme';
 
 type EquityChartData = Pick<ChartData, 'equity_values' | 'asset_values' | 'max_drawdown' | 'quote' | 'asset'>;
 
 /** Portfolio equity (quote) vs position value (asset), with the max drawdown window shaded. */
-export function EquityChart({ data, height = 300 }: { data: EquityChartData; height?: number }) {
+export function EquityChart({ data, height: fullHeight = 300 }: { data: EquityChartData; height?: number }) {
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const touch = useMediaQuery(TOUCH_QUERY);
+  const height = compact ? Math.round(fullHeight * 0.8) : fullHeight;
+
   const figure = useMemo(() => {
     const equity = data.equity_values ?? [];
     const assets = data.asset_values ?? [];
@@ -69,10 +81,12 @@ export function EquityChart({ data, height = 300 }: { data: EquityChartData; hei
     }
 
     const layout = baseTimeLayout({
+      ...compactLayout(compact),
       height,
-      margin: { t: 20, r: 60, l: 60, b: 40 },
+      dragmode: defaultDragmode(touch),
+      margin: compact ? { t: 16, r: 40, l: 44, b: 32 } : { t: 20, r: 60, l: 60, b: 40 },
       yaxis: {
-        title: { text: `Equity (${quote})` },
+        title: { text: compact ? '' : `Equity (${quote})` },
         gridcolor: CHART_COLORS.grid,
         side: 'left',
         tickformat: ',.8~f',
@@ -80,7 +94,7 @@ export function EquityChart({ data, height = 300 }: { data: EquityChartData; hei
         linecolor: CHART_COLORS.grid,
       },
       yaxis2: {
-        title: { text: `Position (${asset})` },
+        title: { text: compact ? '' : `Position (${asset})` },
         overlaying: 'y',
         side: 'right',
         showgrid: false,
@@ -90,7 +104,7 @@ export function EquityChart({ data, height = 300 }: { data: EquityChartData; hei
     });
 
     return { traces, layout };
-  }, [data, height]);
+  }, [data, height, compact, touch]);
 
   return (
     <Plot

@@ -48,7 +48,7 @@ export function SignalListPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 xl:grid-cols-3">
           {sessions.data.map((session) => (
             <SessionCard
               key={session.id}

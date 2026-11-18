@@ -1,14 +1,26 @@
 import { useMemo } from 'react';
 import type { Data } from 'plotly.js';
 import { Plot } from '@/components/charts/Plot';
-import { CHART_COLORS, INTERACTIVE_CONFIG, baseTimeLayout } from '@/components/charts/theme';
+import {
+  CHART_COLORS,
+  INTERACTIVE_CONFIG,
+  baseTimeLayout,
+  compactLayout,
+  defaultDragmode,
+} from '@/components/charts/theme';
+import { COMPACT_QUERY, TOUCH_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import { formatPlotlyLocalDate } from '@/lib/time';
 import type { TradeRecord } from '../stats';
 
 const HEIGHT = 400;
+const COMPACT_HEIGHT = 300;
 
 /** Cumulative profit line + per-trade profit bars (both in %). */
 export function PerformanceChart({ trades }: { trades: TradeRecord[] }) {
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const touch = useMediaQuery(TOUCH_QUERY);
+  const height = compact ? COMPACT_HEIGHT : HEIGHT;
+
   const figure = useMemo(() => {
     const x = trades.map((t) => formatPlotlyLocalDate(t.time));
     const cumulativeProfit: number[] = [];
@@ -43,28 +55,35 @@ export function PerformanceChart({ trades }: { trades: TradeRecord[] }) {
     ];
 
     const layout = baseTimeLayout({
-      height: HEIGHT,
-      margin: { t: 20, r: 60, l: 60, b: 40 },
+      ...compactLayout(compact),
+      height,
+      dragmode: defaultDragmode(touch),
+      margin: compact ? { t: 16, r: 40, l: 44, b: 32 } : { t: 20, r: 60, l: 60, b: 40 },
       yaxis: {
-        title: { text: 'Cumulative Profit (%)' },
+        title: { text: compact ? '' : 'Cumulative Profit (%)' },
         gridcolor: CHART_COLORS.grid,
         side: 'left',
         tickformat: ',.2f',
         showline: true,
         linecolor: CHART_COLORS.grid,
       },
-      yaxis2: { title: { text: 'Trade Profit (%)' }, overlaying: 'y', side: 'right', showgrid: false },
+      yaxis2: {
+        title: { text: compact ? '' : 'Trade Profit (%)' },
+        overlaying: 'y',
+        side: 'right',
+        showgrid: false,
+      },
     });
 
     return { traces, layout };
-  }, [trades]);
+  }, [trades, height, compact, touch]);
 
   return (
     <Plot
       data={figure.traces}
       layout={figure.layout}
       className="w-full"
-      style={{ height: HEIGHT }}
+      style={{ height }}
       config={INTERACTIVE_CONFIG}
     />
   );

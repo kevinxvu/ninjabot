@@ -61,9 +61,9 @@ export function StrategyFields<T extends StrategyValues>({
         </Select>
       </FormField>
 
-      <div className="rounded-xl border bg-muted p-5">
+      <div className="rounded-xl border bg-muted p-4 sm:p-5">
         {strategy?.params === 'ema' && (
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <FormField label="Fast Period (EMA)" htmlFor="fast_period" hint="Buy when EMA crosses above SMA.">
               <Input
                 id="fast_period"
@@ -96,7 +96,7 @@ export function StrategyFields<T extends StrategyValues>({
         )}
 
         {strategy?.params === 'dca' && (
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <FormField
               label="Interval (Days)"
               htmlFor="dca_interval"
@@ -132,7 +132,7 @@ export function StrategyFields<T extends StrategyValues>({
         )}
 
         {strategy?.params === 'fib' && (
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <FormField
               label="Pivot Length (Candles)"
               htmlFor="fib_pivot"

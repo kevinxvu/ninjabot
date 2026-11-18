@@ -65,6 +65,36 @@ export function baseTimeLayout(overrides: Partial<Layout> = {}): Partial<Layout>
   };
 }
 
+/** Axis/legend font size on phone-width charts. */
+export const COMPACT_FONT_SIZE = 10;
+
+/**
+ * Default drag behaviour. On touch devices a one-finger drag must scroll the page instead of
+ * panning the chart; zoom stays available from the mode bar (and pan can be picked there).
+ */
+export function defaultDragmode(touch: boolean): Layout['dragmode'] {
+  return touch ? false : 'pan';
+}
+
+/** Font and legend overrides for phone-width charts. Spread into baseTimeLayout overrides. */
+export function compactLayout(compact: boolean): Partial<Layout> {
+  if (!compact) return {};
+  return {
+    font: { family: FONT_FAMILY, color: CHART_COLORS.text, size: COMPACT_FONT_SIZE },
+    legend: {
+      orientation: 'h',
+      yanchor: 'bottom',
+      y: 1.02,
+      xanchor: 'left',
+      x: 0,
+      bgcolor: CHART_COLORS.surface,
+      bordercolor: CHART_COLORS.grid,
+      borderwidth: 1,
+      font: { size: COMPACT_FONT_SIZE },
+    },
+  };
+}
+
 export const INTERACTIVE_CONFIG: Partial<Config> = {
   responsive: true,
   scrollZoom: true,

@@ -4,7 +4,7 @@ import type { BacktestStats } from '../stats';
 
 export function StatsGrid({ stats, quote }: { stats: BacktestStats; quote: string }) {
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
       <StatCard
         label="Portfolio Return"
         value={formatPercent(stats.totalReturn)}

@@ -29,9 +29,16 @@ export function StatCard({
   className,
 }: StatCardProps) {
   return (
-    <div className={cn('flex flex-col rounded-xl border bg-card p-5 shadow-card', className)}>
+    <div className={cn('flex min-w-0 flex-col rounded-xl border bg-card p-4 shadow-card sm:p-5', className)}>
       <div className="mb-2 label-style">{label}</div>
-      <div className={cn('text-2xl font-bold tracking-tight tabular-nums', valueClassName)}>{value}</div>
+      <div
+        className={cn(
+          'text-xl font-bold tracking-tight break-words tabular-nums sm:text-2xl',
+          valueClassName,
+        )}
+      >
+        {value}
+      </div>
       {hint && <div className={cn('mt-1 text-xs font-medium', TREND_CLASS[trend])}>{hint}</div>}
     </div>
   );

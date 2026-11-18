@@ -22,9 +22,9 @@ export function TelegramSettingsPage() {
   const settings = useAsync('telegram-settings', settingsApi.getTelegram);
 
   return (
-    <div className="mx-auto max-w-2xl py-6">
+    <div className="mx-auto max-w-2xl sm:py-6">
       <Card className="shadow-card">
-        <CardContent className="p-8 pt-2">
+        <CardContent className="px-4 pt-2 pb-4 sm:p-8 sm:pt-2">
           <PageHeader
             icon={<Send />}
             title="Telegram Alerts"

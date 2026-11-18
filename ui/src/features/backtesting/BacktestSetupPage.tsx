@@ -94,9 +94,9 @@ export function BacktestSetupPage() {
   };
 
   return (
-    <div className="mx-auto max-w-xl py-6">
+    <div className="mx-auto max-w-xl sm:py-6">
       <Card className="shadow-card">
-        <CardContent className="p-8 pt-2">
+        <CardContent className="px-4 pt-2 pb-4 sm:p-8 sm:pt-2">
           <PageHeader
             icon={<Activity />}
             title="New Backtest"
@@ -110,7 +110,7 @@ export function BacktestSetupPage() {
                 <PairSelect id="pairs" value={pair} onChange={(next) => update({ pairs: next })} />
               </FormField>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <FormField
                   label="Timeframe"
                   htmlFor="timeframe"

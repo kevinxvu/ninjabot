@@ -8,7 +8,7 @@ export function SessionStatsGrid({ stats }: { stats: SessionStats }) {
   const priced = stats.current_value !== null;
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <StatCard
         label="Current Value"
         value={priced ? `${formatNumber(stats.current_value, 2)} ${quote}` : '-'}

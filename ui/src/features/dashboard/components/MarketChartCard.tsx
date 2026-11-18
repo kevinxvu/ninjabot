@@ -32,11 +32,11 @@ export function MarketChartCard({
     <SectionCard
       title="Crypto Live"
       className="lg:col-span-2"
-      contentClassName="flex min-h-[400px] flex-1 flex-col"
+      contentClassName="flex min-h-[320px] flex-1 flex-col sm:min-h-[400px]"
       action={
-        <div className="flex items-center gap-2">
-          <PairSelect value={pair} onChange={onPairChange} className="w-44" />
-          <TimeframeSelect value={timeframe} onChange={onTimeframeChange} className="w-32" />
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <PairSelect value={pair} onChange={onPairChange} className="min-w-0 flex-1 sm:w-44 sm:flex-none" />
+          <TimeframeSelect value={timeframe} onChange={onTimeframeChange} className="w-28 sm:w-32" />
         </div>
       }
     >
@@ -45,7 +45,7 @@ export function MarketChartCard({
       ) : message ? (
         <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">{message}</div>
       ) : (
-        <div className="min-h-[400px] flex-1">
+        <div className="h-[320px] flex-1 sm:h-auto sm:min-h-[400px]">
           <LiveCandleChart candles={candles} currentPrice={currentPrice} revision={`${pair}-${timeframe}`} />
         </div>
       )}

@@ -75,9 +75,9 @@ export function SignalSetupPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl py-6">
+    <div className="mx-auto max-w-2xl sm:py-6">
       <Card className="shadow-card">
-        <CardContent className="p-8 pt-2">
+        <CardContent className="px-4 pt-2 pb-4 sm:p-8 sm:pt-2">
           <PageHeader
             icon={<Activity />}
             title="New Realtime Signal"
@@ -87,7 +87,7 @@ export function SignalSetupPage() {
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <FormSection icon={<Settings2 />} title="Environment">
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <FormField label="Trading Pair" htmlFor="pair">
                   <PairSelect
                     id="pair"
@@ -105,7 +105,7 @@ export function SignalSetupPage() {
                 </FormField>
               </div>
 
-              <div className="grid grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <FormField label="Initial Asset" htmlFor="initial_asset">
                   <Select value={initialAsset} onValueChange={(value) => update({ initial_asset: value })}>
                     <SelectTrigger id="initial_asset" className="w-full bg-card">

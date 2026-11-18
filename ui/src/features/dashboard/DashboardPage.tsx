@@ -45,13 +45,13 @@ export function DashboardPage() {
 
   return (
     <>
-      <div className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-6 lg:grid-cols-4">
         {WATCHLIST.map((symbol) => (
           <TickerCard key={symbol} pair={symbol} price={prices[symbol]} info={pairsInfo.data?.[symbol]} />
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3">
         <MarketChartCard
           pair={pair}
           timeframe={timeframe}

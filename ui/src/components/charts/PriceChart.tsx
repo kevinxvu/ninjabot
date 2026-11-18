@@ -3,10 +3,11 @@ import type { Layout, PlotRelayoutEvent, PlotRestyleEvent } from 'plotly.js';
 import type { ChartData, MarketCandle } from '@/api/types';
 import { SectionCard } from '@/components/common/SectionCard';
 import { Toggle } from '@/components/ui/toggle';
+import { COMPACT_QUERY, TOUCH_QUERY, matchesMedia, useMediaQuery } from '@/hooks/useMediaQuery';
 import { buildLiveCandles, visiblePriceRange } from '@/lib/candles';
 import { Plot } from './Plot';
 import { buildPriceFigure } from './priceFigure';
-import { INTERACTIVE_CONFIG } from './theme';
+import { INTERACTIVE_CONFIG, defaultDragmode } from './theme';
 
 interface PriceChartProps {
   data: ChartData | null | undefined;
@@ -31,7 +32,11 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
   // Explicit user choices; indicators without a choice fall back to isDefaultSubIndicator.
   const [subIndicatorChoice, setSubIndicatorChoice] = useState<Record<string, boolean>>({});
   // User zoom/pan and legend visibility must survive realtime re-renders.
-  const [view, setView] = useState<ChartView>({ xRange: null, dragmode: 'pan' });
+  const [view, setView] = useState<ChartView>(() => ({
+    xRange: null,
+    dragmode: defaultDragmode(matchesMedia(TOUCH_QUERY)),
+  }));
+  const compact = useMediaQuery(COMPACT_QUERY);
   const [hiddenTraces, setHiddenTraces] = useState<ReadonlySet<string>>(new Set());
 
   const candles = useMemo(
@@ -63,6 +68,7 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
       xRange: view.xRange,
       yRange: visiblePriceRange(candles, view.xRange, currentPrice),
       dragmode: view.dragmode,
+      compact,
     });
   }, [
     candles,
@@ -76,6 +82,7 @@ export function PriceChart({ data, currentPrice = 0, realtimeCandle = null, time
     standaloneIndicators,
     subIndicatorChoice,
     view,
+    compact,
   ]);
 
   const traces = useMemo(

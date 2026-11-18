@@ -2,10 +2,12 @@ import type { Annotations, Data, Layout, Shape } from 'plotly.js';
 import type { ChartCandle, ChartShape, Indicator, SessionEvent } from '@/api/types';
 import { formatNumber, formatPercent } from '@/lib/format';
 import { formatClientDateTime, formatPlotlyLocalDate, toEpochMs } from '@/lib/time';
-import { CHART_COLORS, FONT_FAMILY, baseTimeLayout } from './theme';
+import { CHART_COLORS, FONT_FAMILY, baseTimeLayout, compactLayout } from './theme';
 
-const BASE_HEIGHT_PX = 600;
-const SUB_INDICATOR_HEIGHT_PX = 150;
+const FULL_BASE_HEIGHT_PX = 600;
+const FULL_SUB_INDICATOR_HEIGHT_PX = 150;
+const COMPACT_BASE_HEIGHT_PX = 420;
+const COMPACT_SUB_INDICATOR_HEIGHT_PX = 120;
 
 export interface PriceFigureInput {
   candles: ChartCandle[];
@@ -20,6 +22,8 @@ export interface PriceFigureInput {
   xRange: [string, string] | null;
   yRange: [number, number] | null;
   dragmode: Layout['dragmode'];
+  /** Phone-width layout: shorter panes, tighter margins, no axis titles. */
+  compact?: boolean;
 }
 
 function orderAnnotations(candles: ChartCandle[]) {
@@ -243,16 +247,19 @@ export function buildPriceFigure(input: PriceFigureInput) {
   }
 
   // Stack sub-indicator panes under the price + volume area.
-  let height = BASE_HEIGHT_PX;
+  const compact = !!input.compact;
+  const baseHeight = compact ? COMPACT_BASE_HEIGHT_PX : FULL_BASE_HEIGHT_PX;
+  const subHeight = compact ? COMPACT_SUB_INDICATOR_HEIGHT_PX : FULL_SUB_INDICATOR_HEIGHT_PX;
+  let height = baseHeight;
   let priceDomain: [number, number] = [0.2, 1];
   let volumeDomain: [number, number] = [0, 0.15];
   const subAxes: Record<string, unknown> = {};
 
   if (subIndicators.length > 0) {
-    height = BASE_HEIGHT_PX + subIndicators.length * SUB_INDICATOR_HEIGHT_PX;
-    const paneRatio = SUB_INDICATOR_HEIGHT_PX / height;
+    height = baseHeight + subIndicators.length * subHeight;
+    const paneRatio = subHeight / height;
     const subTotal = subIndicators.length * paneRatio;
-    const baseRatio = BASE_HEIGHT_PX / height;
+    const baseRatio = baseHeight / height;
     priceDomain = [subTotal + baseRatio * 0.2, 1];
     volumeDomain = [subTotal, subTotal + baseRatio * 0.15];
 
@@ -263,7 +270,7 @@ export function buildPriceFigure(input: PriceFigureInput) {
       const bounded = indicator.name.startsWith('RSI') || indicator.name.startsWith('Stoch');
 
       subAxes[`yaxis${axisNumber}`] = {
-        title: { text: indicator.name },
+        title: { text: compact ? '' : indicator.name },
         domain: [top - paneRatio, top - 0.02],
         showgrid: true,
         gridcolor: CHART_COLORS.grid,
@@ -304,8 +311,9 @@ export function buildPriceFigure(input: PriceFigureInput) {
 
   const layout: Partial<Layout> = {
     ...baseTimeLayout({
+      ...compactLayout(compact),
       height,
-      margin: { t: 20, r: 96, l: 60, b: 40 },
+      margin: compact ? { t: 16, r: 72, l: 44, b: 32 } : { t: 20, r: 96, l: 60, b: 40 },
       dragmode: input.dragmode,
       xaxis: {
         rangeslider: { visible: false },
@@ -316,7 +324,7 @@ export function buildPriceFigure(input: PriceFigureInput) {
     yaxis: {
       domain: priceDomain,
       gridcolor: CHART_COLORS.grid,
-      title: { text: 'Price' },
+      title: { text: compact ? '' : 'Price' },
       side: 'left',
       tickformat: ',.8~f',
       showline: true,

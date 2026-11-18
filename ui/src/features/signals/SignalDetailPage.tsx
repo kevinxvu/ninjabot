@@ -93,7 +93,7 @@ export function SignalDetailPage() {
     <>
       <PageHeader
         title={
-          <span className="flex items-center gap-3">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {data.pair}
             <SessionStatusBadge status={data.status} />
           </span>
@@ -150,13 +150,13 @@ export function SignalDetailPage() {
       {alertError && <ErrorAlert message={alertError} className="mb-6" />}
 
       {stats && (
-        <div className="mb-6">
+        <div className="mb-4 sm:mb-6">
           <SessionStatsGrid stats={stats} />
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        <div className="flex min-h-[500px] flex-col gap-6 lg:col-span-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 xl:grid-cols-4">
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-6 lg:min-h-[500px] xl:col-span-3">
           {!!chart.error && (
             <ErrorAlert
               title="Chart unavailable"
@@ -183,7 +183,7 @@ export function SignalDetailPage() {
 
         <SectionCard
           title="Signal History"
-          className="max-h-[600px] overflow-hidden"
+          className="max-h-[480px] overflow-hidden sm:max-h-[600px]"
           contentClassName="overflow-y-auto"
         >
           <SignalHistory events={data.events ?? []} orders={data.orders ?? []} />

@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 /** Bordered sub-panel with a small uppercase title. */
 function Panel({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <div className={cn('rounded-xl border p-4', className)}>
+    <div className={cn('min-w-0 rounded-xl border p-3 sm:p-4', className)}>
       <h4 className="mb-4 label-style text-primary">{title}</h4>
       {children}
     </div>
@@ -38,14 +38,17 @@ export function BacktestSummary({ summary }: { summary: Summary }) {
       title="Backtest Summary"
       action={
         summary.strategy_info && (
-          <Badge variant="outline" className="font-mono font-normal text-muted-foreground">
+          <Badge
+            variant="outline"
+            className="max-w-full font-mono font-normal whitespace-normal text-muted-foreground"
+          >
             {summary.strategy_info}
           </Badge>
         )
       }
       contentClassName="space-y-6"
     >
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         <StatCard label="Initial Capital" value={`${formatNumber(summary.initial_capital)} ${base}`} />
         <StatCard
           label="Final Portfolio"
@@ -255,10 +258,12 @@ function ConfidenceIntervals({ pairs }: { pairs: PairStat[] }) {
               range: `${formatNumber(pair.ci_pf_lower, 2)} ~ ${formatNumber(pair.ci_pf_upper, 2)}`,
             },
           ].map((row) => (
-            <div key={row.name} className="mb-1 flex items-center justify-between text-xs tabular-nums">
-              <span className="w-24 tracking-wider text-muted-foreground uppercase">{row.name}</span>
+            <div key={row.name} className="mb-1 flex items-center justify-between gap-2 text-xs tabular-nums">
+              <span className="w-20 shrink-0 tracking-wider text-muted-foreground uppercase sm:w-24">
+                {row.name}
+              </span>
               <span className="font-semibold">{row.mean}</span>
-              <span className="w-32 text-right text-muted-foreground">({row.range})</span>
+              <span className="text-right text-muted-foreground sm:w-32">({row.range})</span>
             </div>
           ))}
         </div>
@@ -290,7 +295,7 @@ function ReturnDistribution({ buckets }: { buckets: ReturnBucket[] }) {
 
         return (
           <div key={bucket.label} className="flex items-center gap-2 text-xs tabular-nums">
-            <span className="w-24 shrink-0 text-right text-muted-foreground">{bucket.label}</span>
+            <span className="w-20 shrink-0 text-right text-muted-foreground sm:w-24">{bucket.label}</span>
             <div className="h-3 flex-1 overflow-hidden rounded-sm bg-muted">
               <div className={cn('h-full rounded-sm', barClass)} style={{ width: `${width}%` }} />
             </div>

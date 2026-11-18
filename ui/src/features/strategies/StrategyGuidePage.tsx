@@ -25,7 +25,7 @@ export function StrategyGuidePage() {
   }, [selected]);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-4 sm:space-y-6">
       <PageHeader
         icon={<BookOpen />}
         title="Strategy Guide"

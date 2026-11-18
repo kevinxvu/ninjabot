@@ -14,17 +14,19 @@ export function TickerCard({ pair, price, info }: TickerCardProps) {
   const name = info?.asset || asset;
 
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-card">
+    <div className="min-w-0 rounded-xl border bg-card p-4 shadow-card sm:p-5">
       <div className="flex items-center gap-2">
         <CoinIcon asset={name} src={info?.logo} />
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold">
             {asset}-{quote === 'USDT' ? 'USD' : quote}
           </h3>
-          <p className="text-xs text-muted-foreground">{name} USD</p>
+          <p className="truncate text-xs text-muted-foreground">{name} USD</p>
         </div>
       </div>
-      <div className="mt-4 text-2xl font-bold tabular-nums">{formatUsd(price ?? 0)}</div>
+      <div className="mt-3 truncate text-lg font-bold tabular-nums sm:mt-4 sm:text-2xl">
+        {formatUsd(price ?? 0)}
+      </div>
     </div>
   );
 }

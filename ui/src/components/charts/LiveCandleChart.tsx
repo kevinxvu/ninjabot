@@ -1,11 +1,19 @@
 import { useMemo } from 'react';
+import { COMPACT_QUERY, TOUCH_QUERY, useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Data } from 'plotly.js';
 import type { MarketCandle } from '@/api/types';
 import { isValidCandle, normalizeCandle } from '@/lib/candles';
 import { formatPrice, formatUsd, getPriceFractionDigits } from '@/lib/format';
 import { formatPlotlyLocalDate } from '@/lib/time';
 import { Plot } from './Plot';
-import { CHART_COLORS, DATE_HOVER_FORMAT, INTERACTIVE_CONFIG, baseTimeLayout } from './theme';
+import {
+  CHART_COLORS,
+  DATE_HOVER_FORMAT,
+  INTERACTIVE_CONFIG,
+  baseTimeLayout,
+  compactLayout,
+  defaultDragmode,
+} from './theme';
 
 interface LiveCandleChartProps {
   candles: MarketCandle[];
@@ -17,6 +25,9 @@ interface LiveCandleChartProps {
 
 /** Candlestick + volume chart for live market data (Dashboard). */
 export function LiveCandleChart({ candles, currentPrice = 0, revision }: LiveCandleChartProps) {
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const touch = useMediaQuery(TOUCH_QUERY);
+
   const figure = useMemo(() => {
     const display = candles.map(normalizeCandle).filter(isValidCandle);
     const lastClose = display.length ? display[display.length - 1].close : 0;
@@ -66,7 +77,9 @@ export function LiveCandleChart({ candles, currentPrice = 0, revision }: LiveCan
     ];
 
     const layout = baseTimeLayout({
-      margin: { l: 40, r: 80, t: 20, b: 40 },
+      ...compactLayout(compact),
+      margin: compact ? { l: 8, r: 68, t: 12, b: 32 } : { l: 40, r: 80, t: 20, b: 40 },
+      dragmode: defaultDragmode(touch),
       uirevision: revision,
       showlegend: false,
       xaxis: {
@@ -117,7 +130,7 @@ export function LiveCandleChart({ candles, currentPrice = 0, revision }: LiveCan
           yanchor: 'middle',
           text: formatUsd(price),
           showarrow: false,
-          font: { color: '#ffffff', size: 11 },
+          font: { color: '#ffffff', size: compact ? 10 : 11 },
           bgcolor: CHART_COLORS.indigo,
           bordercolor: CHART_COLORS.indigo,
           borderwidth: 1,
@@ -127,7 +140,7 @@ export function LiveCandleChart({ candles, currentPrice = 0, revision }: LiveCan
     });
 
     return { traces, layout };
-  }, [candles, currentPrice, revision]);
+  }, [candles, currentPrice, revision, compact, touch]);
 
   return (
     <Plot

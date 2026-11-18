@@ -26,10 +26,10 @@ export function SessionCard({ session, pending, onStop, onResume, onDelete }: Se
       tabIndex={0}
       onClick={() => navigate(`/realtime-signals/${session.id}`)}
       onKeyDown={(event) => event.key === 'Enter' && navigate(`/realtime-signals/${session.id}`)}
-      className="cursor-pointer rounded-xl border bg-card p-5 shadow-card transition-shadow outline-none hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      className="cursor-pointer rounded-xl border bg-card p-4 shadow-card transition-shadow outline-none hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:p-5"
     >
-      <div className="mb-4 flex items-start justify-between">
-        <div>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <div className="text-lg font-bold">{session.pair}</div>
           <div className="font-mono text-xs text-muted-foreground" title={session.id}>
             {shortSessionId(session)}

@@ -194,11 +194,11 @@ ui/src/
   App.tsx                 Routes: /dashboard, /backtesting[?strategy=], /backtesting/dashboard?pair=, /realtime-signals, /realtime-signals/setup, /realtime-signals/:id, /strategies[?s=], /settings
   index.css               Design tokens (:root/.dark) mapped to Tailwind via @theme inline; `label-style` utility
   api/                    client.ts (axios wrapper returning body, getErrorMessage), market.ts, backtest.ts, signals.ts, types.ts
-  hooks/                  useAsync (fetch with stale-response guard, reload, mutate), useMarketSocket, useTradingPairs (shared cache), useLocalStorageState
+  hooks/                  useAsync (fetch with stale-response guard, reload, mutate), useMarketSocket, useTradingPairs (shared cache), useLocalStorageState, useMediaQuery (COMPACT_QUERY, TOUCH_QUERY)
   lib/                    utils (cn), format (numbers/prices/pnl), time (client-local 24h formatting, Plotly dates, timeframes), candles, pairs, storage
   components/ui/          shadcn/ui primitives: generated, add more with `npx shadcn@latest add <name>` (from ui/)
   components/common/      StatCard, SectionCard, EmptyState, LoadingState, ErrorAlert, FormField, FormSection, MoneyInput, KeyValueList, ConfirmDialog, StatusBadge, CoinIcon, Spinner
-  components/layout/      AppLayout (sidebar + <Outlet/>), Sidebar, navigation.ts (menu items), PageHeader
+  components/layout/      AppLayout (sidebar + <Outlet/>), Sidebar (+ MobileHeader drawer), navigation.ts (menu items), PageHeader
   components/market/      PairSelect, TimeframeSelect, timeframes.ts
   components/strategy/    strategies.ts (strategy catalogue: params, fixed timeframe, description), StrategyFields
   components/charts/      Plot (lazy Plotly wrapper), theme.ts (chart colors/layout), PriceChart + priceFigure.ts, LiveCandleChart, EquityChart
@@ -227,7 +227,20 @@ The UI follows a **Payment Gateway / Fintech Minimalism** look (Stripe, Vercel):
 - Use `label-style` for small uppercase captions (field labels, table headers, stat labels).
 - Status badges are pastel: `Badge` variants `success`, `danger`, `warning`, `muted`. Use `SessionStatusBadge` and `OrderSideBadge`.
 - Build pages from `PageHeader` + `SectionCard`/`StatCard`. Forms use `FormSection` + `FormField`.
-- Never use brutalist, overly colorful or cluttered designs. Don't add placeholder or fake widgets. The maintainer deliberately removed them (fake Exchange widget, search bar, extra menu items).
+- Never use brutalist, overly colorful or cluttered designs.
+
+### Responsive layout
+
+Every page must work on phones (from 375px), tablets and desktop. Build mobile-first with Tailwind breakpoints (`sm` 640, `md` 768, `lg` 1024, `xl` 1280):
+- Navigation: below `md`, `MobileHeader` (sticky top bar + `Sheet` drawer); from `md`, a 72px icon rail with tooltips; from `lg`, the full 256px sidebar. `AppLayout` offsets `main` with `md:ml-[72px] lg:ml-64`. New menu items go only in `navigation.ts`, which feeds all three.
+- Spacing scales down on phones: `p-4 sm:p-6` for pages, `gap-4 sm:gap-6` (or `gap-3 sm:gap-4`) for grids, `mb-4 sm:mb-6` between sections. Cards (`components/ui/card.tsx`) already use `px-4 sm:px-6`; form cards use `px-4 pb-4 sm:p-8`.
+- Grids start with few columns and grow: forms `grid-cols-1 sm:grid-cols-2`, stat rows `grid-cols-2` on phones. Stat values use `text-xl sm:text-2xl` with `break-words`/`truncate` and `min-w-0` on flex/grid children so long numbers never overflow.
+- Headers wrap: `PageHeader` actions and `SectionCard` `action` drop under the title on narrow screens (flex-wrap, `max-w-full`). Don't put fixed widths (`w-44`, ...) on header controls without a phone fallback (`flex-1 sm:w-44 sm:flex-none`).
+- Wide tables stay in `Table` (its container scrolls horizontally); don't force them to fit.
+- Inputs keep 16px text below `md` (`text-base md:text-sm`) so iOS Safari doesn't zoom on focus.
+- Charts: read `useMediaQuery(COMPACT_QUERY)` and apply `compactLayout(compact)` from `charts/theme.ts`, tighter margins, no axis titles and lower heights on phones. Use `defaultDragmode(touch)` (`TOUCH_QUERY`) so a one-finger drag scrolls the page on touch devices instead of panning; zoom/pan stay in the mode bar.
+- Use `useMediaQuery` (built on `useSyncExternalStore`) for JS-level breakpoints; prefer CSS classes whenever CSS can do it.
+- Check UI changes at 375px, 820px and 1280px in DevTools device mode (on :8080) before finishing. Don't add placeholder or fake widgets. The maintainer deliberately removed them (fake Exchange widget, search bar, extra menu items).
 
 ## Framework guide
 
